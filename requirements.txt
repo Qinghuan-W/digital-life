@@ -1,0 +1,4 @@
+wxauto
+openai
+python-dotenv
+pyyaml

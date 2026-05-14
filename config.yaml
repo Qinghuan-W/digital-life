@@ -1,0 +1,11 @@
+llm:
+  provider: openai-compatible
+  base_url: https://vg.v1api.cc/v1
+  model: deepseek-v3-0324
+  api_key_env: DEEPSEEK_API_KEY
+  temperature: 0.9
+  max_tokens: 800
+
+bot:
+  prompt_file: prompts/default.md
+  max_history_messages: 10
