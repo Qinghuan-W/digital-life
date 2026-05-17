@@ -40,10 +40,10 @@ def create_client(llm_config):
     return OpenAI(**client_kwargs)
 
 
-def chat_once(user_message):
+def chat_once(user_message, prompt_file=None):
     config = load_config()
     llm_config = config["llm"]
-    prompt_file = config["bot"]["prompt_file"]
+    prompt_file = prompt_file or config["bot"]["prompt_file"]
 
     system_prompt = load_prompt(prompt_file)
     client = create_client(llm_config)

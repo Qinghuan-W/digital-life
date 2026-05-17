@@ -9,3 +9,16 @@ llm:
 bot:
   prompt_file: prompts/default.md
   max_history_messages: 10
+
+wechat:
+  contacts:
+    - name: 清欢
+      enabled: true
+      prompt_file: prompts/default.md
+  poll_interval_seconds: 1
+  chat_open_timeout_seconds: 5
+  listen_setup_delay_seconds: 2.5
+  listen_setup_retries: 3
+  reply_delay_seconds: 1.2
+  max_reply_parts: 6
+  debug_messages: true
