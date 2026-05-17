@@ -3,6 +3,7 @@ import time
 from wxauto import WeChat
 
 from llm.openai_compatible import chat_once, load_config
+from services.context_store import append_exchange, get_history
 
 
 def get_enabled_contacts(wechat_config):
@@ -113,9 +114,11 @@ def send_reply(wx, who, reply, wechat_config, recent_sent):
 
 def main():
     config = load_config()
+    bot_config = config.get("bot", {})
     wechat_config = config.get("wechat", {})
     contacts = get_enabled_contacts(wechat_config)
     contact_by_name = {contact["name"]: contact for contact in contacts}
+    max_history_messages = int(bot_config.get("max_history_messages", 10))
     poll_interval = float(wechat_config.get("poll_interval_seconds", 1))
     debug_messages = bool(wechat_config.get("debug_messages", False))
 
@@ -176,7 +179,9 @@ def main():
                     print("消息内容：", content)
 
                     try:
-                        reply = chat_once(content, prompt_file=prompt_file)
+                        history = get_history(who, max_history_messages)
+                        reply = chat_once(content, prompt_file=prompt_file, history=history)
+                        append_exchange(who, content, reply, max_history_messages)
                     except Exception as error:
                         print(f"AI 调用失败：{error}")
                         reply = "我这边刚刚有点卡住了\\你再和我说一遍好不好"

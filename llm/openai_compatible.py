@@ -40,20 +40,21 @@ def create_client(llm_config):
     return OpenAI(**client_kwargs)
 
 
-def chat_once(user_message, prompt_file=None):
+def chat_once(user_message, prompt_file=None, history=None):
     config = load_config()
     llm_config = config["llm"]
     prompt_file = prompt_file or config["bot"]["prompt_file"]
+    history = history or []
 
     system_prompt = load_prompt(prompt_file)
     client = create_client(llm_config)
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
     response = client.chat.completions.create(
         model=llm_config["model"],
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
+        messages=messages,
         temperature=float(llm_config.get("temperature", 0.9)),
         max_tokens=int(llm_config.get("max_tokens", 800)),
     )
