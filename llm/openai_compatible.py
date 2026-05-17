@@ -139,13 +139,53 @@ def classify_reply_timing(user_message, history=None):
         }
 
 
-def chat_once(user_message, prompt_file=None, history=None):
+def summarize_long_term_memory(existing_memory, pending_text):
+    config = load_config()
+    llm_config = config["llm"]
+
+    prompt = f"""
+你要把一段微信聊天内容整理成长期记忆。
+
+已有长期记忆：
+{existing_memory if existing_memory else "暂无"}
+
+新的待总结聊天：
+{pending_text}
+
+请输出一份更新后的长期记忆，要求：
+- 用中文
+- 只保留长期有用的信息、偏好、关系状态、重要事件、禁忌和承诺
+- 删除寒暄、重复内容、临时小事
+- 不要编造
+- 使用项目符号
+- 控制在 800 字以内
+"""
+
+    client = create_client(llm_config)
+    response = client.chat.completions.create(
+        model=llm_config["model"],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=900,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def chat_once(user_message, prompt_file=None, history=None, long_term_memory=None):
     config = load_config()
     llm_config = config["llm"]
     prompt_file = prompt_file or config["bot"]["prompt_file"]
     history = history or []
 
     system_prompt = load_prompt(prompt_file)
+    if long_term_memory:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            "以下是你需要参考的长期记忆和较早聊天记录。"
+            "其中“尚未总结的较早聊天”也是真实发生过的旧聊天，回复时要一起参考：\n"
+            f"{long_term_memory}"
+        )
+
     client = create_client(llm_config)
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
