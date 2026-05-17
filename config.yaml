@@ -10,15 +10,35 @@ bot:
   prompt_file: prompts/default.md
   max_history_messages: 10
 
+reply_timing:
+  enabled: true
+  default_profile: normal
+  min_delay_seconds: 0
+  max_delay_seconds: 30
+  profile_seconds:
+    urgent: 1
+    normal: 4
+    happy: 3
+    sad: 7
+    affectionate: 6
+    awkward: 8
+    complex: 10
+    offended: 16
+
 wechat:
   contacts:
     - name: 清欢
       enabled: true
       prompt_file: prompts/default.md
   poll_interval_seconds: 1
+  queue_wait_seconds: 6
+  drain_startup_messages: true
+  drain_startup_quiet_seconds: 2
+  drain_startup_max_seconds: 12
   chat_open_timeout_seconds: 5
   listen_setup_delay_seconds: 2.5
   listen_setup_retries: 3
-  reply_delay_seconds: 1.2
+  part_base_delay_seconds: 0.8
+  typing_seconds_per_char: 0.08
   max_reply_parts: 6
-  debug_messages: true
+  debug_messages: false
