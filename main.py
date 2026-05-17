@@ -1,8 +1,9 @@
 import time
+import re
 
 from wxauto import WeChat
 
-from llm.openai_compatible import chat_once, load_config
+from llm.openai_compatible import classify_reply_timing, chat_once, load_config
 from services.context_store import append_exchange, get_history
 
 
@@ -32,7 +33,7 @@ def split_reply(text, max_parts):
         return []
 
     parts = []
-    for chunk in text.replace("$", "\\").split("\\"):
+    for chunk in re.split(r"[\\$]+|\r?\n+", text):
         chunk = chunk.strip()
         if chunk:
             parts.append(chunk)
@@ -96,8 +97,120 @@ def should_ignore_message(msg, recent_sent):
     return False
 
 
-def send_reply(wx, who, reply, wechat_config, recent_sent):
-    reply_delay = float(wechat_config.get("reply_delay_seconds", 1.2))
+def drain_startup_messages(wx, wechat_config):
+    if not wechat_config.get("drain_startup_messages", True):
+        return
+
+    quiet_seconds = float(wechat_config.get("drain_startup_quiet_seconds", 2))
+    max_seconds = float(wechat_config.get("drain_startup_max_seconds", 12))
+    end_at = time.time() + max_seconds
+    quiet_since = time.time()
+    drained_count = 0
+
+    while time.time() < end_at:
+        try:
+            messages_by_chat = wx.GetListenMessage()
+            batch_count = sum(len(msg_list) for msg_list in messages_by_chat.values())
+            if batch_count:
+                drained_count += batch_count
+                quiet_since = time.time()
+        except Exception as error:
+            print(f"清空启动缓存消息时出错：{error}")
+            break
+
+        if time.time() - quiet_since >= quiet_seconds:
+            break
+
+        time.sleep(0.2)
+
+    if drained_count:
+        print(f"已忽略启动时缓存消息 {drained_count} 条")
+    else:
+        print("启动时没有发现缓存消息")
+
+
+def enqueue_message(message_queues, who, sender, content, prompt_file):
+    queue_item = message_queues.setdefault(
+        who,
+        {
+            "messages": [],
+            "sender": sender,
+            "prompt_file": prompt_file,
+            "last_message_at": time.time(),
+        },
+    )
+    queue_item["messages"].append(content)
+    queue_item["sender"] = sender
+    queue_item["prompt_file"] = prompt_file
+    queue_item["last_message_at"] = time.time()
+
+
+def process_ready_queues(
+    wx,
+    message_queues,
+    wechat_config,
+    max_history_messages,
+    recent_sent,
+):
+    queue_wait_seconds = float(wechat_config.get("queue_wait_seconds", 6))
+    now = time.time()
+
+    ready_names = [
+        who
+        for who, queue_item in message_queues.items()
+        if now - queue_item["last_message_at"] >= queue_wait_seconds
+    ]
+
+    for who in ready_names:
+        queue_item = message_queues.pop(who)
+        messages = queue_item["messages"]
+        prompt_file = queue_item.get("prompt_file")
+        merged_content = "\n".join(messages)
+
+        print("------ 合并处理消息 ------")
+        print("聊天对象：", who)
+        print("消息条数：", len(messages))
+        print("合并内容：", merged_content)
+
+        try:
+            received_at = queue_item["last_message_at"]
+            history = get_history(who, max_history_messages)
+            timing = classify_reply_timing(merged_content, history=history)
+            print(
+                "回复时机："
+                f"{timing['profile']}，目标等待 "
+                f"{timing['delay_seconds']:.1f} 秒，原因：{timing['reason']}"
+            )
+            reply = chat_once(merged_content, prompt_file=prompt_file, history=history)
+            append_exchange(who, merged_content, reply, max_history_messages)
+        except Exception as error:
+            print(f"AI 调用失败：{error}")
+            timing = {"delay_seconds": 0}
+            reply = "我这边刚刚有点卡住了\\你再和我说一遍好不好"
+            received_at = queue_item["last_message_at"]
+
+        elapsed_seconds = time.time() - received_at
+        remaining_delay = max(0, timing["delay_seconds"] - elapsed_seconds)
+        send_reply(
+            wx,
+            who,
+            reply,
+            wechat_config,
+            recent_sent,
+            initial_delay_seconds=remaining_delay,
+        )
+
+
+def send_reply(
+    wx,
+    who,
+    reply,
+    wechat_config,
+    recent_sent,
+    initial_delay_seconds=0,
+):
+    part_base_delay = float(wechat_config.get("part_base_delay_seconds", 0.8))
+    typing_seconds_per_char = float(wechat_config.get("typing_seconds_per_char", 0.08))
     max_parts = int(wechat_config.get("max_reply_parts", 6))
 
     parts = split_reply(reply, max_parts=max_parts)
@@ -105,11 +218,21 @@ def send_reply(wx, who, reply, wechat_config, recent_sent):
         print("AI 返回了空回复，已跳过发送。")
         return
 
+    initial_delay_seconds = max(0, float(initial_delay_seconds))
+    if initial_delay_seconds > 0:
+        print(f"等待 {initial_delay_seconds:.1f} 秒后回复 {who}")
+        time.sleep(initial_delay_seconds)
+
     for index, part in enumerate(parts, start=1):
         print(f"发送回复 {index}/{len(parts)} -> {who}: {part}")
         wx.SendMsg(msg=part, who=who)
         recent_sent.append((part, time.time()))
-        time.sleep(reply_delay)
+
+        if index < len(parts):
+            typing_delay = len(parts[index]) * typing_seconds_per_char
+            part_delay = part_base_delay + typing_delay
+            print(f"等待 {part_delay:.1f} 秒后发送下一段")
+            time.sleep(part_delay)
 
 
 def main():
@@ -142,10 +265,13 @@ def main():
 
     contact_by_name = {contact["name"]: contact for contact in active_contacts}
 
+    drain_startup_messages(wx, wechat_config)
+
     print("自动回复已启动。你现在可以在微信里发消息。")
     print("按 Ctrl + C 退出。")
 
     recent_sent = []
+    message_queues = {}
 
     while True:
         try:
@@ -173,20 +299,16 @@ def main():
                     content = (msg.content or "").strip()
                     sender = getattr(msg, "sender", "")
 
-                    print("------ 收到消息 ------")
-                    print("聊天对象：", who)
-                    print("发送人：", sender)
-                    print("消息内容：", content)
+                    enqueue_message(message_queues, who, sender, content, prompt_file)
+                    print(f"已加入消息队列：{who} <- {content}")
 
-                    try:
-                        history = get_history(who, max_history_messages)
-                        reply = chat_once(content, prompt_file=prompt_file, history=history)
-                        append_exchange(who, content, reply, max_history_messages)
-                    except Exception as error:
-                        print(f"AI 调用失败：{error}")
-                        reply = "我这边刚刚有点卡住了\\你再和我说一遍好不好"
-
-                    send_reply(wx, who, reply, wechat_config, recent_sent)
+            process_ready_queues(
+                wx,
+                message_queues,
+                wechat_config,
+                max_history_messages,
+                recent_sent,
+            )
 
             time.sleep(poll_interval)
 
