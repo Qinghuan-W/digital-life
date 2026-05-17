@@ -3,8 +3,23 @@ import re
 
 from wxauto import WeChat
 
-from llm.openai_compatible import classify_reply_timing, chat_once, load_config
+from llm.openai_compatible import (
+    classify_reply_timing,
+    chat_once,
+    load_config,
+    summarize_long_term_memory,
+)
 from services.context_store import append_exchange, get_history
+from services.long_term_memory import (
+    archive_overflow_messages,
+    clear_pending_messages,
+    format_pending_messages,
+    get_memory_status,
+    load_long_term_memory,
+    load_memory_context,
+    load_pending_messages,
+    save_long_term_memory,
+)
 
 
 def get_enabled_contacts(wechat_config):
@@ -148,6 +163,7 @@ def enqueue_message(message_queues, who, sender, content, prompt_file):
 def process_ready_queues(
     wx,
     message_queues,
+    memory_config,
     wechat_config,
     max_history_messages,
     recent_sent,
@@ -166,6 +182,7 @@ def process_ready_queues(
         messages = queue_item["messages"]
         prompt_file = queue_item.get("prompt_file")
         merged_content = "\n".join(messages)
+        summary_job = None
 
         print("------ 合并处理消息 ------")
         print("聊天对象：", who)
@@ -175,14 +192,58 @@ def process_ready_queues(
         try:
             received_at = queue_item["last_message_at"]
             history = get_history(who, max_history_messages)
+            long_term_memory = ""
+            if memory_config.get("enable_long_term_memory", True):
+                long_term_memory = load_memory_context(
+                    who,
+                    max_pending_messages=int(
+                        memory_config.get("max_pending_messages_for_reply", 20)
+                    ),
+                )
+                memory_status = get_memory_status(who)
+                summary_label = "有" if memory_status["has_summary"] else "无"
+                print(
+                    "记忆状态："
+                    f"近期 {len(history)} 条，"
+                    f"长期总结 {summary_label}，"
+                    f"待总结 {memory_status['pending_count']} 条"
+                )
+
             timing = classify_reply_timing(merged_content, history=history)
             print(
                 "回复时机："
                 f"{timing['profile']}，目标等待 "
                 f"{timing['delay_seconds']:.1f} 秒，原因：{timing['reason']}"
             )
-            reply = chat_once(merged_content, prompt_file=prompt_file, history=history)
-            append_exchange(who, merged_content, reply, max_history_messages)
+            reply = chat_once(
+                merged_content,
+                prompt_file=prompt_file,
+                history=history,
+                long_term_memory=long_term_memory,
+            )
+            overflow_messages = append_exchange(
+                who,
+                merged_content,
+                reply,
+                max_history_messages,
+            )
+            if memory_config.get("enable_long_term_memory", True):
+                archived_count = archive_overflow_messages(who, overflow_messages)
+                if archived_count:
+                    print(f"已加入长期记忆待总结区 {archived_count} 条")
+
+                pending_messages = load_pending_messages(who)
+                summarize_after = int(
+                    memory_config.get("summarize_overflow_after_messages", 8)
+                )
+                if len(pending_messages) >= summarize_after:
+                    pending_text = format_pending_messages(pending_messages)
+                    current_memory = load_long_term_memory(who)
+                    summary_job = {
+                        "who": who,
+                        "current_memory": current_memory,
+                        "pending_text": pending_text,
+                    }
         except Exception as error:
             print(f"AI 调用失败：{error}")
             timing = {"delay_seconds": 0}
@@ -199,6 +260,18 @@ def process_ready_queues(
             recent_sent,
             initial_delay_seconds=remaining_delay,
         )
+
+        if summary_job:
+            try:
+                updated_memory = summarize_long_term_memory(
+                    summary_job["current_memory"],
+                    summary_job["pending_text"],
+                )
+                save_long_term_memory(summary_job["who"], updated_memory)
+                clear_pending_messages(summary_job["who"])
+                print(f"已更新 {summary_job['who']} 的长期记忆")
+            except Exception as error:
+                print(f"长期记忆总结失败：{error}")
 
 
 def send_reply(
@@ -238,6 +311,7 @@ def send_reply(
 def main():
     config = load_config()
     bot_config = config.get("bot", {})
+    memory_config = config.get("memory", {})
     wechat_config = config.get("wechat", {})
     contacts = get_enabled_contacts(wechat_config)
     contact_by_name = {contact["name"]: contact for contact in contacts}
@@ -305,6 +379,7 @@ def main():
             process_ready_queues(
                 wx,
                 message_queues,
+                memory_config,
                 wechat_config,
                 max_history_messages,
                 recent_sent,
