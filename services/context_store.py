@@ -56,6 +56,8 @@ def append_exchange(user_name, user_message, assistant_message, max_messages):
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": assistant_message})
+    overflow_messages = history[:-max_messages] if len(history) > max_messages else []
     contexts[user_key] = history[-max_messages:]
 
     save_all_contexts(contexts)
+    return overflow_messages
