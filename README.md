@@ -1,97 +1,252 @@
-# DigitalLife
+# **DigitalLife**
 
-一个基于 Windows 电脑版微信自动化和 OpenAI-compatible 模型接口的个人微信自动回复实验项目。
+![Python](https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![Windows](https://img.shields.io/badge/windows-PC%20WeChat-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![OpenAI Compatible](https://img.shields.io/badge/OpenAI--Compatible-API-412991?style=for-the-badge&logo=openai&logoColor=white)
+![Status](https://img.shields.io/badge/status-early%20prototype-orange?style=for-the-badge)
 
-目前这个项目还处在早期阶段，目标是逐步做成一个带有短期上下文、长期记忆、人格提示词和可配置回复节奏的“数字生命”聊天助手。
+## **Table of Contents**
 
-## 当前功能
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Implementation Details](#implementation-details)
+- [Developer Instructions](#developer-instructions)
+- [Memory System](#memory-system)
+- [Configuration](#configuration)
+- [Privacy and Safety](#privacy-and-safety)
+- [Roadmap](#roadmap)
 
-- 通过 `wxauto` 连接 Windows 电脑版微信
-- 监听指定微信聊天对象
-- 调用 OpenAI-compatible 接口生成回复
-- 支持在 `config.yaml` 中切换模型、接口地址和回复参数
-- 支持短期上下文记忆
-- 支持长期记忆：
-  - 最近消息保存在 `memory/chat_history.json`
-  - 超出短期上限的旧消息进入 `pending.json`
-  - `pending.json` 达到阈值后自动总结进 `summary.md`
-  - 每次回复时会同时参考短期上下文、待总结记忆和长期总结
-- 支持根据用户消息情绪判断回复等待时间
-- 支持多段微信消息发送
-- 支持启动时忽略微信缓存旧消息，减少重复回复历史消息的问题
+## **Overview**
 
-## 当前限制
+DigitalLife is a personal WeChat auto-reply experiment based on Windows PC WeChat automation and OpenAI-compatible model APIs.<br>
+The project aims to gradually build a small "digital life" style chat companion with personality prompts, short-term context, long-term memory and human-like reply timing.<br>
 
-- 目前主要在 Windows + 电脑版微信环境测试
-- 依赖微信桌面端 UI 自动化，不是微信官方 API
-- 运行时需要保持微信客户端在线，并尽量不要频繁切换窗口状态
-- 长期记忆目前是第一版，仍可能出现总结遗漏，后续计划加入更稳定的核心记忆
-- 暂时没有 dashboard，配置主要通过 `config.yaml` 和 `.env` 修改
+At the current stage, the project can listen to a configured WeChat chat, call a model to generate replies, remember recent conversation context, summarize older messages into long-term memory, and reply with a delay based on the emotional tone of the message.
 
-## 环境要求
+> [!NOTE]
+> This is an early local prototype. It is designed for personal learning and testing, not production deployment.
 
-- Windows
-- Python 3.10 或更高版本，当前开发环境为 Python 3.11
-- 已登录的 Windows 电脑版微信
-- 一个兼容 OpenAI Chat Completions 格式的模型接口
+## **Features**
 
-## 安装
+### Core
 
-克隆项目后进入目录：
+* Connects to Windows PC WeChat through `wxauto`.
+* Listens to configured WeChat contacts or chats.
+* Calls an OpenAI-compatible chat completion API to generate replies.
+* Supports configurable model endpoint, model name, temperature and token limit.
+* Supports persona prompts through Markdown prompt files.
+* Maintains short-term conversation context.
+* Stores older context into a long-term memory pipeline.
+* References short-term history, pending memory and summarized memory when replying.
+* Supports emotion-based reply timing.
+* Supports splitting one model reply into multiple WeChat messages.
+* Drains cached startup messages to reduce accidental replies to old messages.
 
-```powershell
-cd C:\Users\你的用户名\Desktop\DigitalLife
+### Additional Features
+
+* Includes standalone model test script.
+* Includes standalone WeChat send and listen test scripts.
+* Keeps private memory and API keys out of GitHub through `.gitignore`.
+* Provides a simple YAML-based configuration system.
+
+## **Architecture**
+
+```text
+WeChat PC Client
+      |
+      v
+wxauto UI Automation
+      |
+      v
+main.py
+  |-- listens for new messages
+  |-- queues messages briefly
+  |-- loads recent and long-term memory
+  |-- asks the model for reply timing
+  |-- asks the model for the actual reply
+  |-- sends reply back to WeChat
+      |
+      v
+OpenAI-compatible Model API
 ```
 
-安装依赖：
+Memory flow:
+
+```text
+New conversation
+      |
+      v
+memory/chat_history.json
+      |
+      |  when recent history is over the configured limit
+      v
+memory/long_term/<contact>/pending.json
+      |
+      |  when pending messages reach the summarize threshold
+      v
+memory/long_term/<contact>/summary.md
+```
+
+## **Project Structure**
+
+```text
+DigitalLife/
+|-- README.md                         # Project overview and setup instructions
+|-- config.yaml                       # Main project configuration
+|-- requirements.txt                  # Python dependencies
+|-- .env.example                      # Environment variable example
+|-- .gitignore                        # Files ignored by Git
+|
+|-- main.py                           # Main WeChat auto-reply loop
+|-- test_ai.py                        # Model API test script
+|-- test_wx.py                        # WeChat send test script
+|-- test_listen.py                    # WeChat listen test script
+|
+|-- llm/
+|   |-- __init__.py
+|   `-- openai_compatible.py          # Model calls, timing analysis and memory summarization
+|
+|-- prompts/
+|   `-- default.md                    # Default persona prompt
+|
+|-- services/
+|   |-- __init__.py
+|   |-- context_store.py              # Short-term context storage
+|   `-- long_term_memory.py           # Long-term memory storage
+|
+`-- memory/                           # Runtime memory, ignored by Git
+    |-- chat_history.json
+    `-- long_term/
+        `-- <contact>/
+            |-- pending.json
+            `-- summary.md
+```
+
+> [!IMPORTANT]
+> The `memory/` folder is generated at runtime and is intentionally ignored by Git because it may contain private chat data.
+
+## **Implementation Details**
+
+| Technology | Usage |
+|---|---|
+| Python | Main programming language. |
+| wxauto | Controls Windows PC WeChat through UI automation. |
+| OpenAI Python SDK | Calls OpenAI-compatible model APIs. |
+| python-dotenv | Loads local API keys from `.env`. |
+| PyYAML | Reads project configuration from `config.yaml`. |
+| Markdown prompts | Defines the bot persona and reply style. |
+| JSON files | Stores short-term and pending memory locally. |
+| Markdown memory | Stores summarized long-term memory in `summary.md`. |
+
+## **Developer Instructions**
+
+### Prerequisites
+
+Before you begin, make sure you have:
+
+- **Windows**
+- **Python 3.10+**
+- **Windows PC WeChat**, already logged in
+- **An OpenAI-compatible model API key**
+
+### Local Setup
+
+#### 1. Clone the Repository
+
+```powershell
+git clone https://github.com/Qinghuan-W/digital-life.git
+cd digital-life
+```
+
+#### 2. Install Dependencies
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-复制环境变量文件：
+#### 3. Create Environment File
 
 ```powershell
 copy .env.example .env
 ```
 
-然后编辑 `.env`，填入你的 API Key：
+Then edit `.env`:
 
 ```env
 DEEPSEEK_API_KEY=sk-your-key-here
 ```
 
-注意：`.env` 不要提交到 GitHub。
+Do not commit `.env` to GitHub.
 
-## 配置
+#### 4. Configure Model and WeChat Contact
 
-主要配置文件是 `config.yaml`。
-
-模型配置示例：
+Open `config.yaml` and update the model section:
 
 ```yaml
 llm:
   provider: openai-compatible
-  base_url: https://example.com/v1
+  base_url: https://your-api-endpoint/v1
   model: your-model-name
   api_key_env: DEEPSEEK_API_KEY
   temperature: 0.9
   max_tokens: 800
 ```
 
-微信监听对象配置示例：
+Then update the WeChat contact:
 
 ```yaml
 wechat:
   contacts:
-    - name: 你的微信备注名
+    - name: Your WeChat Remark Name
       enabled: true
       prompt_file: prompts/default.md
 ```
 
-这里的 `name` 要和微信里的备注名、群名或聊天名尽量保持一致。
+The `name` should match the WeChat remark name, group name or chat title as closely as possible.
 
-记忆配置示例：
+#### 5. Test the Model API
+
+```powershell
+python test_ai.py
+```
+
+#### 6. Run the Bot
+
+```powershell
+python main.py
+```
+
+To stop the program:
+
+```text
+Ctrl + C
+```
+
+## **Memory System**
+
+DigitalLife currently uses three layers of memory.
+
+| Memory Layer | File | Purpose |
+|---|---|---|
+| Short-term memory | `memory/chat_history.json` | Keeps the most recent conversation messages. |
+| Pending memory | `memory/long_term/<contact>/pending.json` | Stores older messages that have not been summarized yet. |
+| Long-term summary | `memory/long_term/<contact>/summary.md` | Stores summarized long-term memory. |
+
+Current memory logic:
+
+1. New messages are stored in `chat_history.json`.
+2. When short-term history exceeds `max_history_messages`, older messages move into `pending.json`.
+3. When `pending.json` reaches `summarize_overflow_after_messages`, the model summarizes it into `summary.md`.
+4. After summary succeeds, `pending.json` is deleted.
+5. Every reply can reference `chat_history.json`, `pending.json` and `summary.md`.
+
+This means pending memory is still used for replies before it becomes a long-term summary.
+
+## **Configuration**
+
+### Memory Configuration
 
 ```yaml
 bot:
@@ -103,124 +258,74 @@ memory:
   max_pending_messages_for_reply: 20
 ```
 
-含义：
+| Field | Meaning |
+|---|---|
+| `max_history_messages` | Number of recent messages kept as short-term context. |
+| `summarize_overflow_after_messages` | Number of pending messages required before summarization. |
+| `max_pending_messages_for_reply` | Maximum pending messages included when generating replies. |
 
-- `max_history_messages`: 短期上下文保留最近多少条消息
-- `summarize_overflow_after_messages`: `pending.json` 累计多少条后触发长期总结
-- `max_pending_messages_for_reply`: 回复时最多参考多少条未总结旧消息
+### Reply Timing Configuration
 
-## 运行
-
-先测试模型是否能正常调用：
-
-```powershell
-python test_ai.py
+```yaml
+reply_timing:
+  enabled: true
+  default_profile: normal
+  min_delay_seconds: 0
+  max_delay_seconds: 30
+  profile_seconds:
+    urgent: 1
+    normal: 4
+    happy: 3
+    sad: 7
+    affectionate: 6
+    awkward: 8
+    complex: 10
+    offended: 16
 ```
 
-如果模型测试正常，再运行主程序：
+The model first classifies the emotional tone of the incoming message, then chooses a reply delay profile.
 
-```powershell
-python main.py
-```
+### Prompt Configuration
 
-程序启动后会：
-
-1. 连接微信
-2. 切换到配置里的聊天对象
-3. 开始监听新消息
-4. 收到消息后调用模型生成回复
-5. 自动发送到微信
-
-退出程序可以按：
-
-```text
-Ctrl + C
-```
-
-## 记忆机制
-
-项目运行后会自动生成 `memory/` 文件夹。这个文件夹不会提交到 GitHub，因为里面可能包含私人聊天内容。
-
-当前记忆流程：
-
-```text
-最近消息
-  -> memory/chat_history.json
-
-超出短期上限的旧消息
-  -> memory/long_term/联系人名/pending.json
-
-pending.json 达到阈值
-  -> 调用模型总结
-  -> memory/long_term/联系人名/summary.md
-  -> 删除 pending.json
-```
-
-每次生成回复时，模型会参考：
-
-```text
-chat_history.json
-pending.json
-summary.md
-```
-
-所以即使旧消息还没有被总结进 `summary.md`，只要它还在 `pending.json` 中，也会参与回复。
-
-## 提示词
-
-默认人格提示词在：
+The default persona prompt is stored in:
 
 ```text
 prompts/default.md
 ```
 
-你可以在这里调整回复风格、说话习惯和分段规则。
-
-如果想让一句回复拆成多条微信消息，可以让模型用反斜线分隔：
+If a model reply should be split into multiple WeChat messages, the prompt can instruct the model to use a backslash:
 
 ```text
-今天辛苦啦\先休息一会儿
+今天辛苦啦\先休息一下
 ```
 
-程序会把它拆成两条微信消息发送。
+The program will send this as two separate messages.
 
-## 文件说明
+## **Privacy and Safety**
 
-```text
-main.py                         主程序，负责微信监听、消息队列、回复发送
-config.yaml                     项目配置
-requirements.txt                Python 依赖
-.env.example                    环境变量示例
-prompts/default.md              默认人格提示词
-llm/openai_compatible.py        模型调用、回复时机分析、长期总结
-services/context_store.py       短期上下文存储
-services/long_term_memory.py    长期记忆存储
-test_ai.py                      模型调用测试
-test_wx.py                      微信发送测试
-test_listen.py                  微信监听测试
-```
-
-## 隐私与安全
-
-以下内容不会提交到 GitHub：
+The following files are ignored by Git:
 
 ```text
 .env
 memory/
 ```
 
-`.env` 保存 API Key，`memory/` 保存聊天记忆和长期总结，都属于私人数据。
+- `.env` contains private API keys.
+- `memory/` contains private conversation history and long-term memory.
 
-如果误把 API Key 暴露到公开仓库，应立即删除并重新生成新的 Key。
+If an API key is accidentally committed to a public repository, revoke it immediately and create a new one.
 
-## 后续计划
+> [!WARNING]
+> This project uses desktop UI automation for WeChat. It is not an official WeChat API integration. Use it only for personal experiments and be careful with account safety, privacy and platform rules.
 
-- 增加 `profile.json` 核心记忆，用来稳定保存昵称、姓名、偏好、禁忌等不该丢的信息
-- 增加 dashboard，用网页界面管理监听对象、模型配置和记忆
-- 支持更清晰的多联系人配置
-- 增加记忆查看、清空和手动编辑功能
-- 优化回复时机判断和上下文压缩策略
+## **Roadmap**
 
-## 声明
+Planned improvements:
 
-本项目仅用于个人学习和本地实验。微信自动化依赖桌面端 UI 操作，使用时请注意账号安全、隐私保护和平台规则。
+* Add `profile.json` core memory for stable facts such as name, nickname, preferences and boundaries.
+* Add a dashboard for managing contacts, model settings and memory.
+* Improve multi-contact support.
+* Add memory view, clear and manual edit commands.
+* Improve time awareness for questions such as "what time is it now".
+* Add better error handling around WeChat UI automation.
+* Add safer testing tools for memory behavior.
