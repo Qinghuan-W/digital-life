@@ -10,6 +10,11 @@ bot:
   prompt_file: prompts/default.md
   max_history_messages: 10
 
+memory:
+  enable_long_term_memory: true
+  summarize_overflow_after_messages: 20
+  max_pending_messages_for_reply: 20
+
 reply_timing:
   enabled: true
   default_profile: normal
