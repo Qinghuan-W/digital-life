@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import json
+import re
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -38,6 +40,103 @@ def create_client(llm_config):
         client_kwargs["base_url"] = base_url
 
     return OpenAI(**client_kwargs)
+
+
+def extract_json_object(text):
+    if not text:
+        return "{}"
+
+    match = re.search(r"\{[\s\S]*\}", text)
+    return match.group(0) if match else "{}"
+
+
+def classify_reply_timing(user_message, history=None):
+    config = load_config()
+    llm_config = config["llm"]
+    timing_config = config.get("reply_timing", {})
+
+    profile_seconds = timing_config.get("profile_seconds", {})
+    default_profile = timing_config.get("default_profile", "normal")
+    fallback_delay = float(profile_seconds.get(default_profile, 4))
+
+    if not timing_config.get("enabled", True):
+        return {
+            "profile": "disabled",
+            "delay_seconds": 0,
+            "reason": "回复时机分析已关闭",
+        }
+
+    history = history or []
+    recent_context = []
+    for item in history[-6:]:
+        role = item.get("role")
+        label = "用户" if role == "user" else "你"
+        content = str(item.get("content", "")).strip()
+        if content:
+            recent_context.append(f"{label}: {content}")
+
+    profiles_text = "\n".join(
+        f"- {profile}: {seconds}秒"
+        for profile, seconds in profile_seconds.items()
+    )
+
+    prompt = f"""
+你要判断用户最新这条微信消息的情绪/关系氛围，并选择一个回复时机分类。
+
+可选分类和对应等待时间：
+{profiles_text}
+
+分类含义：
+- urgent：用户明显着急、求助、需要立刻回应
+- normal：普通闲聊、普通问题
+- happy：轻松开心、分享好事
+- sad：低落、委屈、难受、需要安慰
+- affectionate：撒娇、暧昧、表达想念或亲密
+- awkward：尴尬、试探、不知道怎么接
+- complex：复杂问题、长消息、需要认真想
+- offended：用户冒犯、挑衅、攻击、冷嘲热讽，角色可能会不开心或需要冷静一下
+
+最近上下文：
+{chr(10).join(recent_context) if recent_context else "无"}
+
+用户最新消息：
+{user_message}
+
+请只返回 JSON，不要解释，不要使用 Markdown：
+{{"profile": "normal", "reason": "一句很短的中文原因"}}
+"""
+
+    try:
+        client = create_client(llm_config)
+        response = client.chat.completions.create(
+            model=llm_config["model"],
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=120,
+        )
+        raw_content = response.choices[0].message.content or "{}"
+        data = json.loads(extract_json_object(raw_content))
+
+        profile = str(data.get("profile", default_profile)).strip()
+        if profile not in profile_seconds:
+            profile = default_profile
+
+        min_delay = float(timing_config.get("min_delay_seconds", 0))
+        max_delay = float(timing_config.get("max_delay_seconds", 30))
+        delay_seconds = float(profile_seconds.get(profile, fallback_delay))
+        delay_seconds = max(min_delay, min(max_delay, delay_seconds))
+
+        return {
+            "profile": profile,
+            "delay_seconds": delay_seconds,
+            "reason": str(data.get("reason", "")).strip(),
+        }
+    except Exception as error:
+        return {
+            "profile": default_profile,
+            "delay_seconds": fallback_delay,
+            "reason": f"回复时机分析失败，使用默认值：{error}",
+        }
 
 
 def chat_once(user_message, prompt_file=None, history=None):
