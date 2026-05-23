@@ -71,9 +71,19 @@ def should_update_core_profile(text, mode="smart"):
     if mode in ("always", "all"):
         return True
 
+    profile_signal_patterns = [
+        r"我.{0,6}在.+(上学|读书|留学|读研|读博|实习|工作|生活|住|租房)",
+        r"我.{0,6}(住在|住到|搬到|来到|去了|要去).+",
+        r"我.{0,6}(学校|大学|学院|专业|公司|职业|岗位|城市|家乡|老家).+",
+        r"(人在|坐标|定位|base在|base 到).+",
+    ]
+    if any(re.search(pattern, text, re.IGNORECASE) for pattern in profile_signal_patterns):
+        return True
+
     profile_signal_words = [
         "我叫",
         "我是",
+        "我现在",
         "叫我",
         "喊我",
         "称呼",
@@ -83,6 +93,24 @@ def should_update_core_profile(text, mode="smart"):
         "我在",
         "我有",
         "我家",
+        "住在",
+        "搬到",
+        "来到",
+        "留学",
+        "读书",
+        "读研",
+        "读博",
+        "上学",
+        "实习",
+        "工作",
+        "大学",
+        "专业",
+        "城市",
+        "家乡",
+        "老家",
+        "布里斯托",
+        "英国",
+        "伦敦",
         "喜欢",
         "最爱",
         "超爱",
