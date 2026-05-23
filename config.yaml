@@ -12,6 +12,8 @@ bot:
 
 memory:
   enable_long_term_memory: true
+  enable_core_profile: true
+  core_profile_update_mode: smart
   summarize_overflow_after_messages: 20
   max_pending_messages_for_reply: 20
 
