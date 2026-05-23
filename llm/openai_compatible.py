@@ -46,8 +46,20 @@ def extract_json_object(text):
     if not text:
         return "{}"
 
-    match = re.search(r"\{[\s\S]*\}", text)
-    return match.group(0) if match else "{}"
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+
+        try:
+            data, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+
+        if isinstance(data, dict):
+            return json.dumps(data, ensure_ascii=False)
+
+    return "{}"
 
 
 def classify_reply_timing(user_message, history=None):
