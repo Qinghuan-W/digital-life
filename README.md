@@ -37,9 +37,10 @@ At the current stage, the project can listen to a configured WeChat chat, call a
 * Calls an OpenAI-compatible chat completion API to generate replies.
 * Supports configurable model endpoint, model name, temperature and token limit.
 * Supports persona prompts through Markdown prompt files.
+* Maintains core profile memory for stable facts such as names, nicknames, preferences and boundaries.
 * Maintains short-term conversation context.
 * Stores older context into a long-term memory pipeline.
-* References short-term history, pending memory and summarized memory when replying.
+* References core profile, short-term history, pending memory and summarized memory when replying.
 * Supports emotion-based reply timing.
 * Supports splitting one model reply into multiple WeChat messages.
 * Drains cached startup messages to reduce accidental replies to old messages.
@@ -77,6 +78,10 @@ Memory flow:
 ```text
 New conversation
       |
+      v
+memory/long_term/<contact>/profile.json
+      |
+      |  stable facts such as name, nickname, preferences and boundaries
       v
 memory/chat_history.json
       |
@@ -120,6 +125,7 @@ DigitalLife/
     |-- chat_history.json
     `-- long_term/
         `-- <contact>/
+            |-- profile.json
             |-- pending.json
             `-- summary.md
 ```
@@ -137,7 +143,7 @@ DigitalLife/
 | python-dotenv | Loads local API keys from `.env`. |
 | PyYAML | Reads project configuration from `config.yaml`. |
 | Markdown prompts | Defines the bot persona and reply style. |
-| JSON files | Stores short-term and pending memory locally. |
+| JSON files | Stores core profile, short-term and pending memory locally. |
 | Markdown memory | Stores summarized long-term memory in `summary.md`. |
 
 ## **Developer Instructions**
@@ -226,21 +232,23 @@ Ctrl + C
 
 ## **Memory System**
 
-DigitalLife currently uses three layers of memory.
+DigitalLife currently uses four layers of memory.
 
 | Memory Layer | File | Purpose |
 |---|---|---|
+| Core profile | `memory/long_term/<contact>/profile.json` | Keeps stable facts such as name, nicknames, preferences and boundaries. |
 | Short-term memory | `memory/chat_history.json` | Keeps the most recent conversation messages. |
 | Pending memory | `memory/long_term/<contact>/pending.json` | Stores older messages that have not been summarized yet. |
 | Long-term summary | `memory/long_term/<contact>/summary.md` | Stores summarized long-term memory. |
 
 Current memory logic:
 
-1. New messages are stored in `chat_history.json`.
-2. When short-term history exceeds `max_history_messages`, older messages move into `pending.json`.
-3. When `pending.json` reaches `summarize_overflow_after_messages`, the model summarizes it into `summary.md`.
-4. After summary succeeds, `pending.json` is deleted.
-5. Every reply can reference `chat_history.json`, `pending.json` and `summary.md`.
+1. If a message contains stable personal information, the project updates `profile.json`.
+2. New messages are stored in `chat_history.json`.
+3. When short-term history exceeds `max_history_messages`, older messages move into `pending.json`.
+4. When `pending.json` reaches `summarize_overflow_after_messages`, the model summarizes it into `summary.md`.
+5. After summary succeeds, `pending.json` is deleted.
+6. Every reply can reference `profile.json`, `chat_history.json`, `pending.json` and `summary.md`.
 
 This means pending memory is still used for replies before it becomes a long-term summary.
 
@@ -254,6 +262,8 @@ bot:
 
 memory:
   enable_long_term_memory: true
+  enable_core_profile: true
+  core_profile_update_mode: smart
   summarize_overflow_after_messages: 20
   max_pending_messages_for_reply: 20
 ```
@@ -261,8 +271,12 @@ memory:
 | Field | Meaning |
 |---|---|
 | `max_history_messages` | Number of recent messages kept as short-term context. |
+| `enable_core_profile` | Whether to maintain stable profile memory. |
+| `core_profile_update_mode` | `smart` uses a local candidate detector before asking the model to update profile; `always` asks the model to judge every message. |
 | `summarize_overflow_after_messages` | Number of pending messages required before summarization. |
 | `max_pending_messages_for_reply` | Maximum pending messages included when generating replies. |
+
+In `smart` mode, the user does not need to speak in a fixed format. Natural messages such as "香菜这东西我是真吃不了" or "最近迷上冰美式了" can be detected as profile candidates, and the model decides whether they should actually be saved.
 
 ### Reply Timing Configuration
 
@@ -322,7 +336,6 @@ If an API key is accidentally committed to a public repository, revoke it immedi
 
 Planned improvements:
 
-* Add `profile.json` core memory for stable facts such as name, nickname, preferences and boundaries.
 * Add a dashboard for managing contacts, model settings and memory.
 * Improve multi-contact support.
 * Add memory view, clear and manual edit commands.
