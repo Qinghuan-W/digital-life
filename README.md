@@ -41,6 +41,7 @@ At the current stage, the project can listen to a configured WeChat chat, call a
 * Maintains short-term conversation context.
 * Stores older context into a long-term memory pipeline.
 * References core profile, short-term history, pending memory and summarized memory when replying.
+* Injects current local time into each reply so time-related questions use the real clock.
 * Supports emotion-based reply timing.
 * Supports splitting one model reply into multiple WeChat messages.
 * Drains cached startup messages to reduce accidental replies to old messages.
@@ -119,7 +120,8 @@ DigitalLife/
 |-- services/
 |   |-- __init__.py
 |   |-- context_store.py              # Short-term context storage
-|   `-- long_term_memory.py           # Long-term memory storage
+|   |-- long_term_memory.py           # Long-term memory storage
+|   `-- runtime_context.py            # Current local time context
 |
 `-- memory/                           # Runtime memory, ignored by Git
     |-- chat_history.json
@@ -145,6 +147,7 @@ DigitalLife/
 | Markdown prompts | Defines the bot persona and reply style. |
 | JSON files | Stores core profile, short-term and pending memory locally. |
 | Markdown memory | Stores summarized long-term memory in `summary.md`. |
+| Runtime context | Injects current local time into each model reply. |
 
 ## **Developer Instructions**
 
@@ -253,6 +256,15 @@ Current memory logic:
 This means pending memory is still used for replies before it becomes a long-term summary.
 
 ## **Configuration**
+
+### Runtime Configuration
+
+```yaml
+runtime:
+  include_current_time: true
+```
+
+When enabled, the bot injects the computer's current local time, weekday and UTC offset into each reply. This helps the model answer questions such as "现在几点", "今天周几", "明天" and "昨天" without guessing.
 
 ### Memory Configuration
 
