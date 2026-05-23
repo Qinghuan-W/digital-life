@@ -292,12 +292,6 @@ def process_ready_queues(
         try:
             received_at = queue_item["last_message_at"]
             history = get_history(who, max_history_messages)
-            runtime_context = ""
-            if runtime_config.get("include_current_time", True):
-                timezone_name = runtime_config.get("timezone", "local")
-                runtime_context = build_runtime_context(timezone_name=timezone_name)
-                print(f"运行时上下文：已注入当前时间（{timezone_name}）")
-
             long_term_memory = ""
             if memory_config.get("enable_long_term_memory", True):
                 long_term_memory = load_memory_context(
@@ -316,6 +310,15 @@ def process_ready_queues(
                     f"长期总结 {summary_label}，"
                     f"待总结 {memory_status['pending_count']} 条"
                 )
+
+            runtime_context = ""
+            if runtime_config.get("include_current_time", True):
+                timezone_name = runtime_config.get("timezone", "local")
+                runtime_context = build_runtime_context(
+                    timezone_name=timezone_name,
+                    user_memory_text=long_term_memory,
+                )
+                print(f"运行时上下文：已注入机器人当前时间（{timezone_name}）")
 
             timing = classify_reply_timing(merged_content, history=history)
             print(
