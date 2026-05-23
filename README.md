@@ -265,7 +265,7 @@ runtime:
   timezone: Asia/Shanghai
 ```
 
-When enabled, the bot injects the configured current time, weekday and UTC offset into each reply. This helps the model answer questions such as "现在几点", "今天周几", "明天" and "昨天" without guessing.
+When enabled, the bot injects its own configured current time, weekday and UTC offset into each reply. This helps the model answer questions such as "你那边几点", "今天周几", "明天" and "昨天" without guessing.
 
 Timezone examples:
 
@@ -277,6 +277,8 @@ timezone: UTC
 ```
 
 Use `local` to follow the computer's system timezone. Use `Asia/Shanghai` if the bot should behave as if it is in China even when the computer is currently in another country.
+
+This timezone is the bot's own timezone, not the user's fixed timezone. User-side time is inferred from core profile, long-term memory and chat context. For example, if `profile.json` records that the user is in the UK, the runtime context can also provide the user's inferred UK time, so "我这边几点" uses user time while "你那边几点" uses the bot timezone above.
 
 ### Memory Configuration
 
