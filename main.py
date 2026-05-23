@@ -266,8 +266,9 @@ def process_ready_queues(
             history = get_history(who, max_history_messages)
             runtime_context = ""
             if runtime_config.get("include_current_time", True):
-                runtime_context = build_runtime_context()
-                print("运行时上下文：已注入当前本地时间")
+                timezone_name = runtime_config.get("timezone", "local")
+                runtime_context = build_runtime_context(timezone_name=timezone_name)
+                print(f"运行时上下文：已注入当前时间（{timezone_name}）")
 
             long_term_memory = ""
             if memory_config.get("enable_long_term_memory", True):
