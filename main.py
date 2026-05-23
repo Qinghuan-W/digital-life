@@ -24,6 +24,7 @@ from services.long_term_memory import (
     save_core_profile,
     save_long_term_memory,
 )
+from services.runtime_context import build_runtime_context
 
 
 def get_enabled_contacts(wechat_config):
@@ -232,6 +233,7 @@ def enqueue_message(message_queues, who, sender, content, prompt_file):
 def process_ready_queues(
     wx,
     message_queues,
+    runtime_config,
     memory_config,
     wechat_config,
     max_history_messages,
@@ -262,6 +264,11 @@ def process_ready_queues(
         try:
             received_at = queue_item["last_message_at"]
             history = get_history(who, max_history_messages)
+            runtime_context = ""
+            if runtime_config.get("include_current_time", True):
+                runtime_context = build_runtime_context()
+                print("运行时上下文：已注入当前本地时间")
+
             long_term_memory = ""
             if memory_config.get("enable_long_term_memory", True):
                 long_term_memory = load_memory_context(
@@ -292,6 +299,7 @@ def process_ready_queues(
                 prompt_file=prompt_file,
                 history=history,
                 long_term_memory=long_term_memory,
+                runtime_context=runtime_context,
             )
             overflow_messages = append_exchange(
                 who,
@@ -422,6 +430,7 @@ def send_reply(
 def main():
     config = load_config()
     bot_config = config.get("bot", {})
+    runtime_config = config.get("runtime", {})
     memory_config = config.get("memory", {})
     wechat_config = config.get("wechat", {})
     contacts = get_enabled_contacts(wechat_config)
@@ -490,6 +499,7 @@ def main():
             process_ready_queues(
                 wx,
                 message_queues,
+                runtime_config,
                 memory_config,
                 wechat_config,
                 max_history_messages,
