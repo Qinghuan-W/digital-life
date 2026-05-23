@@ -10,6 +10,9 @@ bot:
   prompt_file: prompts/default.md
   max_history_messages: 10
 
+runtime:
+  include_current_time: true
+
 memory:
   enable_long_term_memory: true
   enable_core_profile: true
