@@ -257,7 +257,13 @@ def update_core_profile(existing_profile, user_message, assistant_message, histo
     }
 
 
-def chat_once(user_message, prompt_file=None, history=None, long_term_memory=None):
+def chat_once(
+    user_message,
+    prompt_file=None,
+    history=None,
+    long_term_memory=None,
+    runtime_context=None,
+):
     config = load_config()
     llm_config = config["llm"]
     prompt_file = prompt_file or config["bot"]["prompt_file"]
@@ -271,6 +277,13 @@ def chat_once(user_message, prompt_file=None, history=None, long_term_memory=Non
             "核心资料优先级最高，里面的名字、称呼、偏好和边界不要随意忽略。"
             "其中“尚未总结的较早聊天”也是真实发生过的旧聊天，回复时要一起参考：\n"
             f"{long_term_memory}"
+        )
+    if runtime_context:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            "以下是本次回复的运行时上下文。"
+            "它不是长期记忆，但回答时间、日期、今天、明天、昨天、星期相关问题时必须以这里为准：\n"
+            f"{runtime_context}"
         )
 
     client = create_client(llm_config)
