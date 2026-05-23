@@ -8,16 +8,20 @@ from llm.openai_compatible import (
     chat_once,
     load_config,
     summarize_long_term_memory,
+    update_core_profile,
 )
 from services.context_store import append_exchange, get_history
 from services.long_term_memory import (
     archive_overflow_messages,
     clear_pending_messages,
     format_pending_messages,
+    format_core_profile,
     get_memory_status,
+    load_core_profile,
     load_long_term_memory,
     load_memory_context,
     load_pending_messages,
+    save_core_profile,
     save_long_term_memory,
 )
 
@@ -54,6 +58,71 @@ def split_reply(text, max_parts):
             parts.append(chunk)
 
     return parts[:max_parts]
+
+
+def should_update_core_profile(text, mode="smart"):
+    if not text:
+        return False
+
+    mode = str(mode or "smart").lower()
+    if mode in ("off", "false", "disabled"):
+        return False
+    if mode in ("always", "all"):
+        return True
+
+    profile_signal_words = [
+        "我叫",
+        "我是",
+        "叫我",
+        "喊我",
+        "称呼",
+        "我的名字",
+        "我的昵称",
+        "我的",
+        "我在",
+        "我有",
+        "我家",
+        "喜欢",
+        "最爱",
+        "超爱",
+        "爱吃",
+        "爱喝",
+        "迷上",
+        "上头",
+        "离不开",
+        "真香",
+        "能连",
+        "讨厌",
+        "不喜欢",
+        "不爱",
+        "反感",
+        "受不了",
+        "吃不了",
+        "喝不了",
+        "不吃",
+        "不喝",
+        "过敏",
+        "雷点",
+        "害怕",
+        "怕",
+        "记住",
+        "记一下",
+        "记得",
+        "以后",
+        "不要",
+        "别",
+        "别再",
+        "千万别",
+        "下次",
+        "一般",
+        "通常",
+        "经常",
+        "每天",
+        "总是",
+        "习惯",
+        "长期",
+    ]
+    return any(word in text for word in profile_signal_words)
 
 
 def add_listen_chat(wx, listen_name, wechat_config):
@@ -183,6 +252,7 @@ def process_ready_queues(
         prompt_file = queue_item.get("prompt_file")
         merged_content = "\n".join(messages)
         summary_job = None
+        profile_job = None
 
         print("------ 合并处理消息 ------")
         print("聊天对象：", who)
@@ -201,10 +271,12 @@ def process_ready_queues(
                     ),
                 )
                 memory_status = get_memory_status(who)
+                profile_label = "有" if memory_status["has_profile"] else "无"
                 summary_label = "有" if memory_status["has_summary"] else "无"
                 print(
                     "记忆状态："
                     f"近期 {len(history)} 条，"
+                    f"核心资料 {profile_label}，"
                     f"长期总结 {summary_label}，"
                     f"待总结 {memory_status['pending_count']} 条"
                 )
@@ -244,6 +316,22 @@ def process_ready_queues(
                         "current_memory": current_memory,
                         "pending_text": pending_text,
                     }
+
+                profile_enabled = memory_config.get("enable_core_profile", True)
+                profile_update_mode = memory_config.get(
+                    "core_profile_update_mode",
+                    "smart",
+                )
+                if profile_enabled and should_update_core_profile(
+                    merged_content,
+                    mode=profile_update_mode,
+                ):
+                    profile_job = {
+                        "who": who,
+                        "user_message": merged_content,
+                        "assistant_message": reply,
+                        "history": history,
+                    }
         except Exception as error:
             print(f"AI 调用失败：{error}")
             timing = {"delay_seconds": 0}
@@ -272,6 +360,29 @@ def process_ready_queues(
                 print(f"已更新 {summary_job['who']} 的长期记忆")
             except Exception as error:
                 print(f"长期记忆总结失败：{error}")
+
+        if profile_job:
+            try:
+                current_profile = load_core_profile(profile_job["who"])
+                profile_result = update_core_profile(
+                    current_profile,
+                    profile_job["user_message"],
+                    profile_job["assistant_message"],
+                    history=profile_job["history"],
+                )
+                if profile_result.get("should_update"):
+                    updated_profile = profile_result.get("profile", {})
+                    old_text = format_core_profile(current_profile)
+                    new_text = format_core_profile(updated_profile)
+
+                    if new_text and new_text != old_text:
+                        save_core_profile(profile_job["who"], updated_profile)
+                        reason = profile_result.get("reason", "")
+                        print(f"已更新 {profile_job['who']} 的核心资料：{reason}")
+                    else:
+                        print(f"核心资料无变化：{profile_job['who']}")
+            except Exception as error:
+                print(f"核心资料更新失败：{error}")
 
 
 def send_reply(
