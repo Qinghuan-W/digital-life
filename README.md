@@ -262,9 +262,21 @@ This means pending memory is still used for replies before it becomes a long-ter
 ```yaml
 runtime:
   include_current_time: true
+  timezone: Asia/Shanghai
 ```
 
-When enabled, the bot injects the computer's current local time, weekday and UTC offset into each reply. This helps the model answer questions such as "现在几点", "今天周几", "明天" and "昨天" without guessing.
+When enabled, the bot injects the configured current time, weekday and UTC offset into each reply. This helps the model answer questions such as "现在几点", "今天周几", "明天" and "昨天" without guessing.
+
+Timezone examples:
+
+```yaml
+timezone: local
+timezone: Asia/Shanghai
+timezone: Europe/London
+timezone: UTC
+```
+
+Use `local` to follow the computer's system timezone. Use `Asia/Shanghai` if the bot should behave as if it is in China even when the computer is currently in another country.
 
 ### Memory Configuration
 
