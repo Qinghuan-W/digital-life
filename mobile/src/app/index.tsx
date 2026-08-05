@@ -12,7 +12,7 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const { completeWelcome, hasSeenWelcome, status } = useAuth();
 
-  if (status === 'loading') {
+  if (status === 'initializing') {
     return <LoadingScreen />;
   }
 

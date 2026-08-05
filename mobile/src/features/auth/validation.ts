@@ -33,6 +33,10 @@ export function validatePassword(password: string): string | undefined {
     return '密码至少需要 8 位';
   }
 
+  if (password.length > 128) {
+    return '密码不能超过 128 位';
+  }
+
   return undefined;
 }
 

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-context';
 
@@ -13,7 +14,7 @@ function RootNavigator() {
   const firstSegment = segments[0];
 
   useEffect(() => {
-    if (status === 'loading') {
+    if (status === 'initializing') {
       return;
     }
 
@@ -25,6 +26,10 @@ function RootNavigator() {
       router.replace('/(auth)/login');
     }
   }, [firstSegment, router, status]);
+
+  if (status === 'initializing') {
+    return <LoadingScreen message="正在恢复登录状态" />;
+  }
 
   return (
     <>
