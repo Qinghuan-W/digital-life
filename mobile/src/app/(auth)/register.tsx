@@ -18,7 +18,7 @@ import {
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { register } = useAuth();
+  const { clearError, error, isSubmitting, register } = useAuth();
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
@@ -28,26 +28,27 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<RegisterFieldErrors>({});
   const [formError, setFormError] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
     const values = { displayName, email, password, confirmPassword };
     const nextErrors = validateRegisterForm(values);
     setErrors(nextErrors);
     setFormError(undefined);
+    clearError();
 
     if (hasValidationErrors(nextErrors)) {
       setFormError('请完成所有必填项并修正输入内容。');
       return;
     }
 
-    setSubmitting(true);
     try {
       await register({ displayName, email, password });
     } catch {
-      setFormError('Mock 注册暂时无法完成，请重试。');
-    } finally {
-      setSubmitting(false);
+      // Auth Context exposes the normalized request error to this screen.
     }
   };
 
@@ -55,12 +56,12 @@ export default function RegisterScreen() {
     <PageContainer contentStyle={styles.page} keyboardAware scroll>
       <AuthHeader
         onBack={() => router.replace('/(auth)/login')}
-        subtitle="先创建一个临时资料，稍后再接入真实账号系统"
+        subtitle="创建真实账号，资料将安全保存到本地服务"
         title="创建账号"
       />
 
       <View style={styles.form}>
-        <FormError message={formError} />
+        <FormError message={formError ?? error ?? undefined} />
         <AppInput
           autoCapitalize="words"
           autoComplete="name"
@@ -70,6 +71,7 @@ export default function RegisterScreen() {
           label="显示名称"
           onChangeText={(value) => {
             setDisplayName(value);
+            clearError();
             setErrors((current) => ({ ...current, displayName: undefined }));
           }}
           onSubmitEditing={() => emailRef.current?.focus()}
@@ -88,6 +90,7 @@ export default function RegisterScreen() {
           label="邮箱"
           onChangeText={(value) => {
             setEmail(value);
+            clearError();
             setErrors((current) => ({ ...current, email: undefined }));
           }}
           onSubmitEditing={() => passwordRef.current?.focus()}
@@ -104,6 +107,7 @@ export default function RegisterScreen() {
           label="密码"
           onChangeText={(value) => {
             setPassword(value);
+            clearError();
             setErrors((current) => ({ ...current, password: undefined }));
           }}
           onSubmitEditing={() => confirmPasswordRef.current?.focus()}
@@ -119,6 +123,7 @@ export default function RegisterScreen() {
           label="确认密码"
           onChangeText={(value) => {
             setConfirmPassword(value);
+            clearError();
             setErrors((current) => ({ ...current, confirmPassword: undefined }));
           }}
           onSubmitEditing={submit}
@@ -128,7 +133,7 @@ export default function RegisterScreen() {
           textContentType="newPassword"
           value={confirmPassword}
         />
-        <AppButton loading={submitting} onPress={submit} title="注册并继续" />
+        <AppButton loading={isSubmitting} onPress={submit} title="注册并继续" />
       </View>
 
       <View style={styles.footer}>

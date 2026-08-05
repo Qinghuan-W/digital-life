@@ -18,13 +18,12 @@ import {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, returnToWelcome } = useAuth();
+  const { clearError, error, isSubmitting, login, returnToWelcome } = useAuth();
   const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<LoginFieldErrors>({});
   const [formError, setFormError] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
 
   const goBack = () => {
     returnToWelcome();
@@ -32,23 +31,25 @@ export default function LoginScreen() {
   };
 
   const submit = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
     const values = { email, password };
     const nextErrors = validateLoginForm(values);
     setErrors(nextErrors);
     setFormError(undefined);
+    clearError();
 
     if (hasValidationErrors(nextErrors)) {
       setFormError('请检查标注的输入项后再登录。');
       return;
     }
 
-    setSubmitting(true);
     try {
       await login(values);
     } catch {
-      setFormError('Mock 登录暂时无法完成，请重试。');
-    } finally {
-      setSubmitting(false);
+      // Auth Context exposes the normalized request error to this screen.
     }
   };
 
@@ -56,12 +57,12 @@ export default function LoginScreen() {
     <PageContainer contentStyle={styles.page} keyboardAware scroll>
       <AuthHeader
         onBack={goBack}
-        subtitle="登录后继续与你的 AI 伙伴对话"
+        subtitle="登录后继续使用你的 DigitalLife 账号"
         title="欢迎回来"
       />
 
       <View style={styles.form}>
-        <FormError message={formError} />
+        <FormError message={formError ?? error ?? undefined} />
         <AppInput
           autoCapitalize="none"
           autoComplete="email"
@@ -73,6 +74,7 @@ export default function LoginScreen() {
           label="邮箱"
           onChangeText={(value) => {
             setEmail(value);
+            clearError();
             setErrors((current) => ({ ...current, email: undefined }));
           }}
           onSubmitEditing={() => passwordRef.current?.focus()}
@@ -87,6 +89,7 @@ export default function LoginScreen() {
           label="密码"
           onChangeText={(value) => {
             setPassword(value);
+            clearError();
             setErrors((current) => ({ ...current, password: undefined }));
           }}
           onSubmitEditing={submit}
@@ -96,7 +99,7 @@ export default function LoginScreen() {
           textContentType="password"
           value={password}
         />
-        <AppButton loading={submitting} onPress={submit} title="登录" />
+        <AppButton loading={isSubmitting} onPress={submit} title="登录" />
       </View>
 
       <View style={styles.footer}>
@@ -110,7 +113,7 @@ export default function LoginScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.mockNote}>Phase 1A · 当前使用临时 Mock 登录</Text>
+      <Text style={styles.sessionNote}>登录状态将安全保存在此设备。</Text>
     </PageContainer>
   );
 }
@@ -140,7 +143,7 @@ const styles = StyleSheet.create({
     fontSize: typography.helper,
     fontWeight: '700',
   },
-  mockNote: {
+  sessionNote: {
     color: colors.placeholder,
     fontSize: typography.caption,
     marginTop: 'auto',

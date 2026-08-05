@@ -65,7 +65,7 @@ export default function HomeScreen() {
 
       <View style={styles.bottomAction}>
         <AppButton onPress={() => undefined} title="Continue building DigitalLife" />
-        <Text style={styles.phaseNote}>Phase 1A · 功能预告暂不可点击</Text>
+        <Text style={styles.phaseNote}>Phase 1B-2 · 真实账号已连接</Text>
       </View>
     </PageContainer>
   );

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppInput } from '@/components/ui/AppInput';
+import { FormError } from '@/components/ui/FormError';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { PageContainer } from '@/components/ui/PageContainer';
 import { colors, layout, radii, spacing, typography } from '@/constants/theme';
@@ -12,22 +13,32 @@ import { validateDisplayName } from '@/features/auth/validation';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { logout, updateProfile, user } = useAuth();
+  const { clearError, error: authError, isSubmitting, logout, updateProfile, user } = useAuth();
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [nameError, setNameError] = useState<string>();
   const [savedMessage, setSavedMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   if (!user) {
     return <LoadingScreen />;
   }
 
   const initial = user.displayName.trim().charAt(0).toUpperCase() || 'D';
+  const createdAt = new Date(user.createdAt);
+  const formattedCreatedAt = Number.isNaN(createdAt.getTime())
+    ? user.createdAt
+    : createdAt.toLocaleString('zh-CN');
 
   const saveProfile = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
     const error = validateDisplayName(displayName);
     setNameError(error);
     setSavedMessage(undefined);
+    clearError();
 
     if (error) {
       return;
@@ -36,14 +47,21 @@ export default function ProfileScreen() {
     setSaving(true);
     try {
       await updateProfile(displayName);
-      setSavedMessage('显示名称已更新到本次 Mock 会话。');
+      setSavedMessage('显示名称已同步到服务器。');
+    } catch {
+      // The original user remains in context and the normalized error is shown below.
     } finally {
       setSaving(false);
     }
   };
 
-  const signOut = () => {
-    logout();
+  const signOut = async () => {
+    if (isSubmitting) {
+      return;
+    }
+    setSigningOut(true);
+    await logout();
+    router.replace('/(auth)/login');
   };
 
   return (
@@ -70,7 +88,7 @@ export default function ProfileScreen() {
         <Text style={styles.email}>{user.email}</Text>
         <View style={styles.statusBadge}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>Mock 会话已登录</Text>
+          <Text style={styles.statusText}>{user.isActive ? '账号正常' : '账号已停用'}</Text>
         </View>
       </View>
 
@@ -81,15 +99,20 @@ export default function ProfileScreen() {
             <Text style={styles.infoLabel}>邮箱</Text>
             <Text style={styles.infoValue}>{user.email}</Text>
           </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>创建时间</Text>
+            <Text style={styles.infoValue}>{formattedCreatedAt}</Text>
+          </View>
           <View style={[styles.infoRow, styles.infoRowLast]}>
             <Text style={styles.infoLabel}>账号状态</Text>
-            <Text style={styles.infoValue}>仅限前端 Mock</Text>
+            <Text style={styles.infoValue}>{user.isActive ? '正常' : '已停用'}</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.editSection}>
         <Text style={styles.sectionTitle}>编辑资料</Text>
+        <FormError message={authError ?? undefined} />
         <AppInput
           autoCapitalize="words"
           autoComplete="name"
@@ -97,6 +120,7 @@ export default function ProfileScreen() {
           label="显示名称"
           onChangeText={(value) => {
             setDisplayName(value);
+            clearError();
             setNameError(undefined);
             setSavedMessage(undefined);
           }}
@@ -113,8 +137,8 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.logoutSection}>
-        <AppButton onPress={signOut} title="退出登录" variant="danger" />
-        <Text style={styles.logoutNote}>退出只会清除当前内存中的 Mock 状态。</Text>
+        <AppButton loading={signingOut} onPress={signOut} title="退出登录" variant="danger" />
+        <Text style={styles.logoutNote}>退出会吊销当前 Refresh Token 并清除本机安全存储。</Text>
       </View>
     </PageContainer>
   );
