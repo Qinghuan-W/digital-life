@@ -1,11 +1,11 @@
 # DigitalLife Authentication API
 
-Phase 1B-1 提供独立 FastAPI 认证后端。当前移动端仍使用 Phase 1A Mock Auth，尚未调用这些接口。
+Phase 1B-1 提供独立 FastAPI 认证后端；Phase 1B-2 移动端已经通过 API Client 和 Expo SecureStore 接入这些接口。
 
 ## Base URL
 
 - Windows 本机：`http://127.0.0.1:8000/api/v1`
-- Android Emulator（Phase 1B-2）：`http://10.0.2.2:8000/api/v1`
+- Android Emulator：`http://10.0.2.2:8000/api/v1`
 
 Android Emulator 中的 `127.0.0.1` 指模拟器自身，`10.0.2.2` 才映射到 Windows 主机。
 
@@ -95,6 +95,6 @@ Access Token 是 HS256 JWT，包含 `sub`、`type=access`、`iat`、`exp` 和 `j
 
 Logout 吊销对应 Refresh Token；该 Token 后续刷新会返回 `refresh_token_revoked`。
 
-## Phase 1B-2 接入说明
+## 移动端接入状态
 
-下一阶段移动端应新增 API Client，以 `http://10.0.2.2:8000/api/v1` 作为 Android 开发地址；使用 Expo SecureStore 保存 Token，在 401/Access Token 过期时串行执行 refresh rotation，并用最新 Refresh Token 原子替换旧值。完成真实接口接入后再移除 Mock Auth，不能在本阶段提前混用两套状态。
+移动端使用 `http://10.0.2.2:8000/api/v1`、Expo SecureStore 和原生 fetch。受保护请求遇到 401 时共享单例 Refresh Promise，成功后原子替换 Access/Refresh Token 并只重试原请求一次。Login、Register、Refresh 和 Logout 不触发自动 Refresh；Refresh 失败会清除本机会话并回到登录页。详见 [MOBILE_AUTH.md](MOBILE_AUTH.md)。

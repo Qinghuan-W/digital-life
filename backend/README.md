@@ -1,6 +1,6 @@
 # DigitalLife Backend
 
-Phase 1B-1 FastAPI + PostgreSQL 真实认证后端。它独立运行，不嵌入手机 App；移动端当前仍使用 Mock Auth。
+Phase 1B-1 FastAPI + PostgreSQL 真实认证后端。Phase 1B-2 移动端已通过独立 API Client 接入；后端仍独立运行，不嵌入手机 App。
 
 ## 本机环境
 
@@ -66,3 +66,9 @@ Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
 - 请求密码、Authorization Header 和完整 Token 不写入日志。
 
 完整契约见 [`docs/AUTH_API.md`](../docs/AUTH_API.md)。
+
+## 与移动端联合运行
+
+先确认 PostgreSQL 服务，再运行 `scripts/start-dev.ps1`，最后从 `mobile/` 启动 Expo。Windows 本机使用 `127.0.0.1:8000`；Android Emulator 通过 `10.0.2.2:8000` 访问同一 FastAPI 进程。
+
+移动端 Token 存储与 Refresh 行为见 [`docs/MOBILE_AUTH.md`](../docs/MOBILE_AUTH.md)。网络 logout 失败时移动端仍会清除本机会话，但服务端 Refresh Token 可能继续有效到过期或后续吊销。

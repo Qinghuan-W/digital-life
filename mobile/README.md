@@ -1,29 +1,38 @@
 # DigitalLife Mobile
 
-Expo SDK 57 + React Native + TypeScript + Expo Router 移动端。Phase 1A 认证 UI 已完成，认证与资料数据目前仍只存在内存中。Phase 1B-1 FastAPI/PostgreSQL 后端已在相邻 `backend/` 目录完成，但本阶段没有连接手机端。
+Expo SDK 57 + React Native + TypeScript + Expo Router 移动端。Phase 1B-2 已将 Phase 1A Mock Auth 替换为 FastAPI/PostgreSQL 真实认证。
 
-## 页面与路由
+## 认证实现
 
-- `/`：首次欢迎入口；已完成欢迎后转到登录
-- `/(auth)/login`、`/(auth)/register`：公开认证页面
-- `/(app)`、`/(app)/profile`：需临时登录状态的页面
+- `src/features/auth/auth-context.tsx`：唯一认证状态，负责初始化、提交状态、用户和错误。
+- `src/features/auth/auth-service.ts`：注册、登录、恢复、资料更新与退出。
+- `src/services/api-client.ts`：fetch、超时、统一错误、Bearer Header、单次重试和并发 Refresh 锁。
+- `src/services/token-storage.ts`：使用 `digitallife.auth.tokens` SecureStore key 原子保存 Token 组。
+- `src/services/api-mappers.ts`：将后端 snake_case DTO 转换为 App camelCase 类型。
 
-根布局负责路由保护；退出后不能通过 Android 返回键重新进入受保护页面。
+用户对象不会持久化；每次启动都使用保存的 Token 调用 `/auth/me` 获取最新资料。Mock Auth 文件已移除，正式代码中没有 Mock import。
 
-## 命令
+## 环境变量
+
+复制 `.env.example` 为 `.env`：
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api/v1
+```
+
+`EXPO_PUBLIC_` 只能保存公开 API 地址，不能放 JWT secret、数据库密码或 Token。新增或修改 `.env` 后必须重启 Metro。
+
+## 运行与检查
 
 ```powershell
+Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\mobile'
 npm install
-npm run android
-npm run ios
-npm run web
+npx expo start --offline --android
 npx expo-doctor
 npx tsc --noEmit
 npm run lint
 ```
 
-## Mock 边界
+先启动 PostgreSQL 与 FastAPI，再启动 AVD `Medium_Phone_API_36.0` 和 Expo。Android Emulator 使用 `10.0.2.2` 访问 Windows，不能使用 `localhost`。
 
-`src/features/auth/mock-auth-service.ts` 提供约 650ms 延迟的登录、注册和资料更新。它不访问网络、不保存账号或 Token。Phase 1B 应在此边界接入 FastAPI/PostgreSQL 真实认证，并使用 Expo SecureStore 持久化 Token。
-
-下一阶段 Phase 1B-2 才会新增 API Client 和 Expo SecureStore，并把 Android 开发 Base URL 设置为 `http://10.0.2.2:8000/api/v1`。`10.0.2.2` 是 Android Emulator 访问 Windows 主机的专用地址。
+完整安全与恢复流程见 [../docs/MOBILE_AUTH.md](../docs/MOBILE_AUTH.md)。下一阶段是基础 AI 聊天，本阶段未实现 AI 功能。
