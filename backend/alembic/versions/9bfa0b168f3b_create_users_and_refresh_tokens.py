@@ -1,7 +1,7 @@
 """create users and refresh tokens
 
 Revision ID: 9bfa0b168f3b
-Revises: 
+Revises:
 Create Date: 2026-08-05 22:29:10.411591
 
 """
