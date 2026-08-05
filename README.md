@@ -1,50 +1,79 @@
 # DigitalLife
 
-DigitalLife 是一个规划中的跨平台 AI 陪伴与生活 Agent 应用。当前完成 **Phase 1A：移动端认证 UI 与前端流程骨架**；账号、会话和资料均为内存 Mock，不连接后端、不保存真实 Token，也不会持久化。
+DigitalLife 是规划中的跨平台 AI 陪伴与生活 Agent。目前已完成两个阶段：
 
-## 当前状态
+- **Phase 1A**：Expo/React Native 移动端认证 UI、路由保护和内存 Mock Auth。
+- **Phase 1B-1**：Windows 本地 PostgreSQL + FastAPI 真实认证后端。
 
-- Expo SDK 57、React Native 0.86、Expo Router、TypeScript strict
-- 欢迎页、登录页、注册页、登录后首页、个人资料页
-- 表单校验、密码显示/隐藏、提交加载态、错误态和键盘适配
-- Context + reducer 管理临时认证状态，根路由守卫保护 `(app)` 页面
-- Mock 登录、Mock 注册、显示名称更新和退出登录
-- 已在 Windows 11 的 Android API 36 模拟器与 Expo Go 中实际验证
-- 未创建后端、数据库、真实账号、聊天、Persona、记忆或日历功能
+移动端仍保留 Mock Auth，尚未连接真实 API。AI 聊天、Persona、记忆和 Agent 功能均未开发。
+
+## 架构
+
+```text
+未来 Android Emulator
+  -> http://10.0.2.2:8000
+  -> FastAPI Routes
+  -> Auth Service
+  -> Repositories / SQLAlchemy
+  -> Windows PostgreSQL 17 (localhost:5432)
+```
 
 ## 目录
 
 ```text
-mobile/src/
-├── app/
-│   ├── index.tsx
-│   ├── (auth)/              # 登录与注册
-│   └── (app)/               # 受保护首页与个人资料
-├── components/ui/           # 输入框、按钮、页面容器、品牌与错误提示
-├── constants/theme.ts       # 颜色、间距、圆角与字号
-└── features/auth/           # Mock 服务、状态、类型与校验
+DigitalLife-App/
+├── mobile/                 # Phase 1A Expo App，仍使用 Mock Auth
+├── backend/                # Phase 1B-1 FastAPI 后端
+│   ├── app/
+│   ├── alembic/
+│   ├── tests/
+│   └── scripts/
+├── docs/AUTH_API.md        # 认证 API 契约
+├── AGENTS.md
+└── README.md
 ```
 
-## 运行 Android
+## 后端运行
 
-先启动 Android 模拟器，再执行：
+当前 Windows 开发机使用本地 PostgreSQL 服务、`digitallife` 开发库、`digitallife_test` 测试库和非超级用户 `digitallife_user`。
+
+```powershell
+Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
+.\scripts\start-dev.ps1
+```
+
+- Swagger：`http://127.0.0.1:8000/docs`
+- Health：`http://127.0.0.1:8000/health`
+
+运行测试：
+
+```powershell
+Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
+.\scripts\run-tests.ps1
+```
+
+Migration：
+
+```powershell
+Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
+$env:Path = "C:\Program Files\PostgreSQL\17\bin;$env:Path"
+.\.venv\Scripts\Activate.ps1
+alembic upgrade head
+alembic current
+alembic check
+```
+
+本地秘密只存放于被 Git 忽略的 `backend/.env`；仓库只提交 `.env.example`。
+
+## 移动端运行
 
 ```powershell
 Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\mobile'
-npm install
 npm run android
 ```
 
-网络受限时可使用 `npx expo start --offline --android`。若 Expo Go 连接主机地址失败，Android Emulator 可尝试 `exp://10.0.2.2:8081`。
-
-## 质量检查
-
-```powershell
-npx expo-doctor
-npx tsc --noEmit
-npm run lint
-```
+Android Emulator 中的 `10.0.2.2` 映射 Windows 主机，因此下一阶段连接 API 时使用 `http://10.0.2.2:8000/api/v1`，不是 `localhost`。
 
 ## 下一阶段
 
-Phase 1B 建议接入 FastAPI、PostgreSQL 和真实认证 API，并用 Expo SecureStore 保存真实 Token。届时应替换 `mobile/src/features/auth/mock-auth-service.ts`，保留现有页面、校验和路由边界；在真实接口完成前，不应把当前 Mock 描述为已注册或已持久化的账号。
+Phase 1B-2 将使用 Expo SecureStore、移动端 API Client、自动 Refresh 和真实 Auth Context 替换当前 Mock 流程，并在 Android 上完成端到端真实注册登录。本阶段不包含这些改动。

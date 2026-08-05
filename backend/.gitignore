@@ -1,5 +1,3 @@
-.idea/
-.artifacts/
 .env
 .env.*
 !.env.example
@@ -9,8 +7,3 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
-
-# OS and editor files
-.DS_Store
-Thumbs.db
-*.swp
