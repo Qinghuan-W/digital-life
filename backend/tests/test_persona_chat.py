@@ -407,16 +407,17 @@ def test_message_history_supports_limit_and_before(client: TestClient) -> None:
     assert [item["id"] for item in before] == [all_messages[0]["id"]]
 
 
-def test_persona_profile_is_not_passed_to_provider(
+def test_persona_profile_is_passed_to_provider_as_dynamic_system_prompt(
     client: TestClient,
     fake_llm: FakeLLMProvider,
 ) -> None:
     auth = register_user(client)
-    created = create_persona(client, auth, name="不可进入 Prompt 的名字", relationship="同事")
+    created = create_persona(client, auth, name="动态 Prompt 的名字", relationship="同事")
     send_message(client, auth, created["conversation"]["id"], content="普通消息")
-    serialized = " ".join(message.content for message in fake_llm.calls[0])
-    assert "不可进入 Prompt 的名字" not in serialized
-    assert "同事" not in serialized
+    call = fake_llm.calls[0]
+    assert "动态 Prompt 的名字" in call.system_prompt
+    assert "同事" in call.system_prompt
+    assert [message.content for message in call.messages].count("普通消息") == 1
 
 
 def test_deleting_user_cascades_persona_conversation_and_messages(

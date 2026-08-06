@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.persona import Persona
-from app.schemas.persona import PersonaCreateRequest
+from app.schemas.persona import PersonaCreateRequest, PersonaUpdateRequest
 
 
 class PersonaRepository:
@@ -24,3 +24,14 @@ class PersonaRepository:
             .order_by(Persona.created_at.desc())
         )
         return list(self.session.scalars(statement))
+
+    def get_owned(self, persona_id: UUID, user_id: UUID) -> Persona | None:
+        return self.session.scalar(
+            select(Persona).where(Persona.id == persona_id, Persona.user_id == user_id)
+        )
+
+    def update(self, persona: Persona, request: PersonaUpdateRequest) -> Persona:
+        for field, value in request.model_dump(exclude_unset=True).items():
+            setattr(persona, field, value)
+        self.session.flush()
+        return persona

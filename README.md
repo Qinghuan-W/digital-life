@@ -6,8 +6,9 @@ DigitalLife 是规划中的跨平台 AI 陪伴与生活 Agent。当前已完成�
 - **Phase 1B-1**：Windows 本地 PostgreSQL 17 + FastAPI 真实认证后端。
 - **Phase 1B-2**：Expo SecureStore、真实 API Client、自动 Refresh 和 Android 端到端认证。
 - **Phase 2**：Persona 创建、默认对话、首页对话列表、消息持久化和基础非流式 AI 聊天。
+- **Phase 3A**：根据最新 Persona 资料动态构建沉浸式 Prompt，并支持轻量资料编辑。
 
-Persona 目前只用于组织对话，尚未进入 Prompt；记忆、说话风格、聊天记录上传、流式输出和 Agent 工具尚未开发。
+Persona 的姓名、关系、年龄、性别和描述现在会影响下一条 AI 回复。数据库中的当前 Persona Profile 高于历史消息中的冲突身份资料；历史消息不会因改名而被重写。`display_name` 是必须原样使用的精确名称，不允许模型翻译、本地化或改变格式。Prompt 不保存到数据库；长期记忆、聊天记录上传、世界状态、流式输出和 Agent 工具尚未开发。
 
 ## 当前架构
 
@@ -17,12 +18,14 @@ React Native UI
   -> API Client / Expo SecureStore
   -> http://10.0.2.2:8000/api/v1
   -> FastAPI Routes / Services / Repositories
+  -> Dynamic Prompt Builder (base rules + latest Persona profile + recent messages)
   -> LLM Provider (OpenAI Responses API)
   -> SQLAlchemy
   -> Windows PostgreSQL 17
 ```
 
 Android Emulator 中 `10.0.2.2` 映射 Windows 主机；模拟器里的 `localhost` 指模拟器自己。
+Android 聊天页使用 `softwareKeyboardLayoutMode: "resize"`，Header 位于键盘适配区域之外，消息列表与输入框共享可伸缩聊天区域；iOS 单独使用 `KeyboardAvoidingView` 的 `padding` 行为。
 
 ## 本地启动顺序
 
@@ -64,7 +67,9 @@ Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
 
 ## 当前限制
 
-- Persona 信息暂时不影响 AI 回复。
-- 暂无聊天记录上传、说话风格提取、共同记忆或长期记忆。
+- Persona 可生成沉浸式虚构日常，但不代表现实真人的当前状态。
+- 未确认的重大共同历史不能作为真实记忆生成。
+- 暂无聊天记录上传、共同记忆、长期记忆或世界状态持久化。
 - 暂无流式输出和头像上传。
+- 暂无可执行现实操作的 Agent 工具。
 - 当前仍运行在 Windows 本地开发环境。

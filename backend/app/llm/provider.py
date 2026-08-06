@@ -9,7 +9,13 @@ class LLMMessage:
 
 
 class LLMProvider(Protocol):
-    def generate_reply(self, messages: Sequence[LLMMessage]) -> str: ...
+    def generate_reply(
+        self,
+        *,
+        system_prompt: str,
+        identity_reminder: str,
+        messages: Sequence[LLMMessage],
+    ) -> str: ...
 
 
 class LLMProviderError(Exception):

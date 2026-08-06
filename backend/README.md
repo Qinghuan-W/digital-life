@@ -1,6 +1,6 @@
 # DigitalLife Backend
 
-FastAPI + PostgreSQL 后端。Phase 1B 提供真实认证；Phase 2 增加 Persona、默认对话、消息持久化和可替换的 LLM Provider。后端独立运行，不嵌入手机 App。
+FastAPI + PostgreSQL 后端。Phase 1B 提供真实认证；Phase 2 增加 Persona、消息和可替换 LLM Provider；Phase 3A 增加动态沉浸式 Persona Prompt。后端独立运行，不嵌入手机 App。
 
 ## 本机环境
 
@@ -84,7 +84,12 @@ Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
 - 用户消息使用 `client_message_id` 幂等保存，重试不会复制消息。
 - LLM 网络调用不长时间占用数据库事务；成功后再保存 Assistant 回复。
 - `ChatService` 依赖 Provider 接口，自动化测试注入 Fake Provider，不请求真实模型。
-- 当前固定 Prompt 不使用 Persona 字段，也没有长期记忆或流式输出。
+- Prompt Builder 每次组合固定底层规则、数据库最新 Persona Profile 和当前对话最近消息。
+- `description` 作为不可信描述数据放入独立 XML-like 区块并转义，不能覆盖固定规则。
+- Provider 显式接收动态 `system_prompt`，不再硬编码统一 Prompt。
+- Prompt 不写数据库、不返回移动端、不进入普通日志。
+- Persona 可描述虚构日常，但不能冒充现实真人状态、虚构重大共同历史或声称完成未验证工具操作。
+- 当前仍没有长期记忆、聊天记录导入、世界状态、流式输出或 Agent 工具。
 
 完整契约见 [`docs/AUTH_API.md`](../docs/AUTH_API.md)。
 Persona 与聊天契约见 [`docs/PERSONA_CHAT_API.md`](../docs/PERSONA_CHAT_API.md)。

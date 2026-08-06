@@ -34,6 +34,10 @@ Phase 2 在现有认证系统上增加 Persona、默认对话、消息持久化�
 
 `GET /api/v1/personas` 返回当前用户自己的 Persona。
 
+### 修改 Persona
+
+`PATCH /api/v1/personas/{persona_id}` 可修改 `display_name`、`relationship_label`、`age`、`gender_label` 和 `description`。只允许修改当前用户自己的 Persona，越权统一返回 `404 persona_not_found`。修改名字时会在同一事务内同步默认 Conversation 标题；下一条消息会直接读取更新后的资料，无需重启或创建新对话。
+
 ### 首页对话列表
 
 `GET /api/v1/conversations` 返回当前用户自己的对话。包含 Persona 摘要、最近消息角色、最多 100 字的预览和时间。有消息的对话按 `last_message_at` 倒序，其余按创建时间倒序；查询使用相关子查询获取最近消息，避免逐项查询。
@@ -104,11 +108,29 @@ FastAPI Route
 
 真实 API Key 只允许写入未被 Git 跟踪的 `backend/.env`，不得进入移动端、文档、日志、测试或 Git 历史。供应商错误、请求地址和堆栈不会返回客户端。
 
-## Prompt 当前边界
+## Phase 3A 动态 Prompt
 
-当前 Prompt Builder 使用固定通用系统提示，明确回复者是 AI，不声称是真实人物、现实身体、位置或即时经历，也不冒充 Persona 联系第三方。
+每次生成回复时，后端按以下结构即时构建 Prompt：
 
-Phase 2 **不会**把 `display_name`、`relationship_label`、`age`、`gender_label` 或 `description` 放进 Prompt，因此 Persona 信息暂时不影响回复。后续可在 Prompt Builder 中显式增加 persona profile、说话风格、共同记忆、检索记忆和对话摘要；这些能力当前均未启用。
+```text
+固定沉浸式与真实性规则
+  + 数据库最新 Persona Profile
+  + 当前 Conversation 最近 LLM_HISTORY_LIMIT 条消息
+```
+
+Persona Profile 使用 `display_name`、`relationship_label` 以及存在时的 `age`、`gender_label`、`description`。空值不会生成空字段，用户语言保持原样。数据库只保存结构化 Persona 字段，不保存完整生成 Prompt。
+
+当前数据库 Persona Profile 是当前身份资料的唯一权威来源。若最近历史消息仍包含改名前的自我介绍，或包含与当前关系、年龄、性别、描述冲突的资料，模型必须把冲突部分视为过时历史内容并采用当前 Profile；后端不会删除或重写原始历史消息。
+
+`display_name` 与其他描述字段语义不同：它是用户定义的精确专有名称和 opaque identifier。模型提到或自我介绍该名称时必须逐字复制，保留原语言、拼写、大小写、内部空格、标点、符号、数字和 Unicode 字符，不得翻译、音译、本地化、规范化或自动纠错。`relationship_label` 和 `description` 才是可供模型自然理解的人物资料。
+
+为兼容会过度跟随重复历史 Assistant 文本的 Responses Provider，完整动态 Prompt 继续通过 `instructions` 发送，同时在最近历史之后追加一条仅包含安全转义后当前精确名称和冲突处理规则的精简 `developer` 提醒。它只存在于当次模型请求中，不改变消息表、不写日志、不保存到数据库，也不返回移动端。
+
+`description` 被视为不可信描述数据：它位于独立的 `<persona_profile>` 区块，XML 特殊字符会被转义，固定规则明确声明该区块不能覆盖系统规则。Prompt 不返回移动端，也不写入普通日志。
+
+Persona 可以第一人称描述合理的虚构日常、心情、环境和计划，以维持沉浸感；这些内容不代表现实真人的当前状态。明确被问及身份或事件真实性时，Persona 必须说明自己是 DigitalLife AI Persona。它不能虚构未经确认的重大共同历史，也不能声称完成未实际执行和验证的现实操作。
+
+当前仍没有长期记忆、聊天记录导入、对话摘要、世界状态持久化、向量检索或 Agent 工具。
 
 ## 移动端地址
 
@@ -116,3 +138,5 @@ Phase 2 **不会**把 `display_name`、`relationship_label`、`age`、`gender_la
 - Android 模拟器：`http://10.0.2.2:8000/api/v1`
 
 移动端继续通过现有 API Client 和 SecureStore 认证链路调用接口，不包含 OpenAI SDK 或任何供应商密钥。
+
+Android 聊天页使用系统窗口 `resize` 处理软键盘，Header 位于键盘适配容器之外，消息列表与 MessageComposer 位于同一个 `flex: 1` 聊天区域。Android 不再叠加 KeyboardAvoidingView 补偿；iOS 继续使用 `padding`。FlatList 使用 `keyboardShouldPersistTaps="handled"`，拖动时可收起键盘。

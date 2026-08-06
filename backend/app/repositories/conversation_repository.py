@@ -27,6 +27,14 @@ class ConversationRepository:
         )
         return self.session.scalar(statement)
 
+    def get_owned_by_persona(self, persona_id: UUID, user_id: UUID) -> Conversation | None:
+        return self.session.scalar(
+            select(Conversation).where(
+                Conversation.persona_id == persona_id,
+                Conversation.user_id == user_id,
+            )
+        )
+
     def list_with_latest_message(
         self,
         user_id: UUID,

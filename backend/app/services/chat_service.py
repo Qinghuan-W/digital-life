@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.llm.prompt_builder import (
+    PersonaPromptProfile,
+    build_current_identity_reminder,
+    build_persona_system_prompt,
+)
 from app.llm.provider import LLMMessage, LLMProvider, LLMProviderError
 from app.models.message import Message
 from app.models.user import User
@@ -63,6 +68,16 @@ class ChatService:
             conversation_id,
             limit=self.settings.llm_history_limit,
         )
+        persona = conversation.persona
+        prompt_profile = PersonaPromptProfile(
+            display_name=persona.display_name,
+            relationship_label=persona.relationship_label,
+            age=persona.age,
+            gender_label=persona.gender_label,
+            description=persona.description,
+        )
+        system_prompt = build_persona_system_prompt(prompt_profile)
+        identity_reminder = build_current_identity_reminder(prompt_profile)
         provider_messages = [
             LLMMessage(
                 role=cast(Literal["user", "assistant"], message.role),
@@ -75,7 +90,11 @@ class ChatService:
         user_message_id = user_message.id
         self.session.rollback()
         try:
-            reply_content = self.provider.generate_reply(provider_messages)
+            reply_content = self.provider.generate_reply(
+                system_prompt=system_prompt,
+                identity_reminder=identity_reminder,
+                messages=provider_messages,
+            )
         except LLMProviderError as exc:
             self.session.rollback()
             raise AppError(

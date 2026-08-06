@@ -9,6 +9,7 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
+*.apk
 
 # OS and editor files
 .DS_Store

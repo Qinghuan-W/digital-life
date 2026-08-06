@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from openai import OpenAI, OpenAIError
 
 from app.core.config import Settings, get_settings
-from app.llm.prompt_builder import SYSTEM_PROMPT, build_model_input
+from app.llm.prompt_builder import build_model_input
 from app.llm.provider import LLMMessage, LLMProviderError
 
 
@@ -26,15 +26,25 @@ class OpenAIProvider:
             self._client = OpenAI(base_url=base_url, **common) if base_url else OpenAI(**common)
         return self._client
 
-    def generate_reply(self, messages: Sequence[LLMMessage]) -> str:
+    def generate_reply(
+        self,
+        *,
+        system_prompt: str,
+        identity_reminder: str,
+        messages: Sequence[LLMMessage],
+    ) -> str:
         model = (self.settings.openai_model or "").strip()
         if not model:
             raise LLMProviderError("OpenAI model is not configured")
+        model_input = build_model_input(messages)
+        # Reassert the exact current name after historical assistant messages. Some compatible
+        # Responses providers weigh repeated dialogue more strongly than `instructions` alone.
+        model_input.append({"role": "developer", "content": identity_reminder})
         try:
             response = self._get_client().responses.create(
                 model=model,
-                instructions=SYSTEM_PROMPT,
-                input=build_model_input(messages),
+                instructions=system_prompt,
+                input=model_input,
                 store=False,
             )
         except OpenAIError as exc:

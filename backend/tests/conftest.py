@@ -1,5 +1,6 @@
 import os
 from collections.abc import Generator
+from dataclasses import dataclass
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,14 +31,33 @@ def clean_test_database() -> Generator[None, None, None]:
     yield
 
 
+@dataclass(frozen=True)
+class FakeLLMCall:
+    system_prompt: str
+    identity_reminder: str
+    messages: list[LLMMessage]
+
+
 class FakeLLMProvider:
     def __init__(self) -> None:
         self.reply = "你好，我是 DigitalLife 中的 AI 助手。"
         self.fail = False
-        self.calls: list[list[LLMMessage]] = []
+        self.calls: list[FakeLLMCall] = []
 
-    def generate_reply(self, messages: list[LLMMessage]) -> str:
-        self.calls.append(list(messages))
+    def generate_reply(
+        self,
+        *,
+        system_prompt: str,
+        identity_reminder: str,
+        messages: list[LLMMessage],
+    ) -> str:
+        self.calls.append(
+            FakeLLMCall(
+                system_prompt=system_prompt,
+                identity_reminder=identity_reminder,
+                messages=list(messages),
+            )
+        )
         if self.fail:
             raise LLMProviderError("fake provider failure")
         return self.reply

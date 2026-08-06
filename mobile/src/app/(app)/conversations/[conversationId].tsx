@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { MessageComposer } from '@/components/chat/MessageComposer';
+import { EditPersonaSheet } from '@/components/persona/EditPersonaSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { FormError } from '@/components/ui/FormError';
 import { colors, layout, spacing, typography } from '@/constants/theme';
@@ -42,6 +43,7 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
+  const [editingPersona, setEditingPersona] = useState(false);
 
   const loadConversation = useCallback(async () => {
     if (!conversationId) {
@@ -183,26 +185,33 @@ export default function ConversationScreen() {
 
   return (
     <SafeAreaView edges={['top', 'right', 'bottom', 'left']} style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardView}>
-        <View style={styles.page}>
-          <View style={styles.header}>
-            <Pressable
-              accessibilityLabel="返回对话列表"
-              accessibilityRole="button"
-              onPress={leaveConversation}
-              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-              <Text style={styles.backIcon}>←</Text>
-            </Pressable>
-            <View style={styles.headerCopy}>
-              <Text numberOfLines={1} style={styles.headerTitle}>
-                {conversation.persona.displayName}
-              </Text>
-            </View>
-            <View style={styles.backButton} />
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityLabel="返回对话列表"
+            accessibilityRole="button"
+            onPress={leaveConversation}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+            <Text style={styles.backIcon}>←</Text>
+          </Pressable>
+          <View style={styles.headerCopy}>
+            <Text numberOfLines={1} style={styles.headerTitle}>
+              {conversation.persona.displayName}
+            </Text>
           </View>
+          <Pressable
+            accessibilityLabel="编辑 Persona"
+            accessibilityRole="button"
+            onPress={() => setEditingPersona(true)}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+            <Text style={styles.infoIcon}>•••</Text>
+          </Pressable>
+        </View>
 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          enabled={Platform.OS === 'ios'}
+          style={styles.keyboardView}>
           <FlatList
             contentContainerStyle={[
               styles.messageContent,
@@ -232,8 +241,20 @@ export default function ConversationScreen() {
               value={composerValue}
             />
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+        {editingPersona ? (
+          <EditPersonaSheet
+            onClose={() => setEditingPersona(false)}
+            onUpdated={(persona) => {
+              setConversation((current) =>
+                current ? { ...current, title: persona.displayName, persona } : current,
+              );
+            }}
+            persona={conversation.persona}
+            visible
+          />
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -261,6 +282,7 @@ const styles = StyleSheet.create({
   },
   backButton: { alignItems: 'center', height: layout.minimumTouchTarget, justifyContent: 'center', width: layout.minimumTouchTarget },
   backIcon: { color: colors.text, fontSize: 25 },
+  infoIcon: { color: colors.textSecondary, fontSize: 16, fontWeight: '800', letterSpacing: 1 },
   headerCopy: { alignItems: 'center', flex: 1 },
   headerTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
   pressed: { opacity: 0.5 },

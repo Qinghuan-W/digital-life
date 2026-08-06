@@ -22,3 +22,5 @@ export type CreatePersonaInput = {
   genderLabel: string | null;
   description: string | null;
 };
+
+export type UpdatePersonaInput = CreatePersonaInput;
