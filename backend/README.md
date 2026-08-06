@@ -1,6 +1,6 @@
 # DigitalLife Backend
 
-Phase 1B-1 FastAPI + PostgreSQL 真实认证后端。Phase 1B-2 移动端已通过独立 API Client 接入；后端仍独立运行，不嵌入手机 App。
+FastAPI + PostgreSQL 后端。Phase 1B 提供真实认证；Phase 2 增加 Persona、默认对话、消息持久化和可替换的 LLM Provider。后端独立运行，不嵌入手机 App。
 
 ## 本机环境
 
@@ -20,7 +20,17 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-在 `.env` 中填写本机数据库密码和至少 32 字符的随机 JWT secret。不要提交 `.env`。当前开发机已由初始化脚本生成真实 `.env`。
+在 `.env` 中填写本机数据库密码和至少 32 字符的随机 JWT secret。需要真实 AI 回复时，再手动填写 `OPENAI_API_KEY` 和 `OPENAI_MODEL`；不要提交或输出 `.env`。
+
+Phase 2 LLM 配置：
+
+```dotenv
+OPENAI_API_KEY=replace-me
+OPENAI_MODEL=replace-me
+OPENAI_BASE_URL=
+LLM_TIMEOUT_SECONDS=30
+LLM_HISTORY_LIMIT=20
+```
 
 ## Migration
 
@@ -64,8 +74,20 @@ Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
 - Refresh 使用行锁和单事务 rotation；旧 Token 立即吊销。
 - 数据库操作使用 `digitallife_user`，不使用 `postgres` 超级用户。
 - 请求密码、Authorization Header 和完整 Token 不写入日志。
+- OpenAI API Key 只存在于后端 `.env`；移动端、日志和错误响应均不包含供应商密钥。
+- LLM 调用失败返回统一 `ai_service_unavailable`，不泄露供应商原始异常。
+
+## Persona 与聊天
+
+- 创建 Persona 和默认对话在一个事务中完成。
+- 所有资源查询按当前用户隔离；越权访问统一返回 404。
+- 用户消息使用 `client_message_id` 幂等保存，重试不会复制消息。
+- LLM 网络调用不长时间占用数据库事务；成功后再保存 Assistant 回复。
+- `ChatService` 依赖 Provider 接口，自动化测试注入 Fake Provider，不请求真实模型。
+- 当前固定 Prompt 不使用 Persona 字段，也没有长期记忆或流式输出。
 
 完整契约见 [`docs/AUTH_API.md`](../docs/AUTH_API.md)。
+Persona 与聊天契约见 [`docs/PERSONA_CHAT_API.md`](../docs/PERSONA_CHAT_API.md)。
 
 ## 与移动端联合运行
 
