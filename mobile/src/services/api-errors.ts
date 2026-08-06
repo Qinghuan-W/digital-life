@@ -43,6 +43,10 @@ export function getUserFacingError(error: unknown): string {
         return '提交内容不符合要求，请检查后重试。';
       case 'user_inactive':
         return '该账号当前不可用。';
+      case 'ai_service_unavailable':
+        return 'AI 服务暂时不可用，请稍后重试。';
+      case 'conversation_not_found':
+        return '该对话不存在或已被删除。';
       default:
         return error.status >= 500 ? '服务器暂时无法处理请求，请稍后重试。' : error.message;
     }

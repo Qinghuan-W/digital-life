@@ -12,6 +12,7 @@ type AppButtonProps = {
   variant?: AppButtonVariant;
   fullWidth?: boolean;
   accessibilityLabel?: string;
+  loadingTitle?: string;
 };
 
 export function AppButton({
@@ -22,6 +23,7 @@ export function AppButton({
   variant = 'primary',
   fullWidth = true,
   accessibilityLabel,
+  loadingTitle = '请稍候',
 }: AppButtonProps) {
   const isDisabled = disabled || loading;
 
@@ -46,7 +48,9 @@ export function AppButton({
           size="small"
         />
       ) : null}
-      <Text style={[styles.label, styles[`${variant}Label`]]}>{loading ? '请稍候' : title}</Text>
+      <Text style={[styles.label, styles[`${variant}Label`]]}>
+        {loading ? loadingTitle : title}
+      </Text>
     </Pressable>
   );
 }
