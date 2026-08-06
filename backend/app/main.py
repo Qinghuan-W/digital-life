@@ -18,8 +18,8 @@ settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
-    description="DigitalLife Phase 1B-1 authentication API",
+    version="0.2.0",
+    description="DigitalLife authentication, Persona, and foundational chat API",
 )
 app.add_middleware(
     CORSMiddleware,
