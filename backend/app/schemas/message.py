@@ -27,10 +27,18 @@ class MessageResponse(BaseModel):
     content: str
     status: Literal["completed", "failed"]
     client_message_id: UUID | None
+    reply_to_message_id: UUID | None
+    sequence_index: int | None
     created_at: datetime
     updated_at: datetime
 
 
+class MessageDeliveryPlanItemResponse(BaseModel):
+    message_id: UUID
+    delay_ms: int = Field(ge=0, le=3000)
+
+
 class MessageSendResponse(BaseModel):
     user_message: MessageResponse
-    assistant_message: MessageResponse
+    assistant_messages: list[MessageResponse]
+    delivery_plan: list[MessageDeliveryPlanItemResponse]

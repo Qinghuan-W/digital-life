@@ -14,7 +14,7 @@ os.environ["PATH"] = f"{postgres_bin};{os.environ.get('PATH', '')}"
 
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.dependencies.llm import get_llm_provider  # noqa: E402
-from app.llm.provider import LLMMessage, LLMProviderError  # noqa: E402
+from app.llm.provider import GeneratedAssistantTurn, LLMMessage, LLMProviderError  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -40,7 +40,9 @@ class FakeLLMCall:
 
 class FakeLLMProvider:
     def __init__(self) -> None:
-        self.reply = "你好，我是 DigitalLife 中的 AI 助手。"
+        self.reply = "刚吃完，正躺着歇会儿。"
+        self.replies: list[str] | None = None
+        self.conversation_signal = "neutral"
         self.fail = False
         self.calls: list[FakeLLMCall] = []
 
@@ -50,7 +52,7 @@ class FakeLLMProvider:
         system_prompt: str,
         identity_reminder: str,
         messages: list[LLMMessage],
-    ) -> str:
+    ) -> GeneratedAssistantTurn:
         self.calls.append(
             FakeLLMCall(
                 system_prompt=system_prompt,
@@ -60,7 +62,10 @@ class FakeLLMProvider:
         )
         if self.fail:
             raise LLMProviderError("fake provider failure")
-        return self.reply
+        return GeneratedAssistantTurn(
+            messages=self.replies or [self.reply],
+            conversation_signal=self.conversation_signal,
+        )
 
 
 @pytest.fixture

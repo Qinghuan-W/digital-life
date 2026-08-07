@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str | None = None
     openai_base_url: str | None = None
+    llm_api_mode: Literal["responses", "chat_completions"] = "responses"
+    llm_json_mode_enabled: bool = True
+    llm_structured_output_enabled: bool = True
     llm_timeout_seconds: float = Field(default=30, ge=1, le=120)
     llm_history_limit: int = Field(default=20, ge=1, le=50)
     cors_origins: list[str] = [

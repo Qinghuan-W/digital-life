@@ -26,13 +26,16 @@ class MessageRepository:
         )
         return self.session.scalar(statement)
 
-    def get_assistant_reply(self, user_message_id: UUID) -> Message | None:
-        return self.session.scalar(
-            select(Message).where(
+    def get_assistant_replies(self, user_message_id: UUID) -> list[Message]:
+        statement = (
+            select(Message)
+            .where(
                 Message.reply_to_message_id == user_message_id,
                 Message.role == "assistant",
             )
+            .order_by(Message.sequence_index.asc(), Message.created_at.asc(), Message.id.asc())
         )
+        return list(self.session.scalars(statement))
 
     def create_user(
         self,
@@ -52,23 +55,27 @@ class MessageRepository:
         self.session.flush()
         return message
 
-    def create_assistant(
+    def create_assistants(
         self,
         *,
         conversation_id: UUID,
-        content: str,
+        contents: list[str],
         reply_to_message_id: UUID,
-    ) -> Message:
-        message = Message(
-            conversation_id=conversation_id,
-            role="assistant",
-            content=content,
-            status="completed",
-            reply_to_message_id=reply_to_message_id,
-        )
-        self.session.add(message)
+    ) -> list[Message]:
+        messages = [
+            Message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=content,
+                status="completed",
+                reply_to_message_id=reply_to_message_id,
+                sequence_index=sequence_index,
+            )
+            for sequence_index, content in enumerate(contents)
+        ]
+        self.session.add_all(messages)
         self.session.flush()
-        return message
+        return messages
 
     def list_for_conversation(
         self,
@@ -80,7 +87,11 @@ class MessageRepository:
         statement = select(Message).where(Message.conversation_id == conversation_id)
         if before is not None:
             statement = statement.where(Message.created_at < before)
-        statement = statement.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
+        statement = statement.order_by(
+            Message.created_at.desc(),
+            Message.sequence_index.desc().nullslast(),
+            Message.id.desc(),
+        ).limit(limit)
         return list(reversed(list(self.session.scalars(statement))))
 
     def recent_for_context(self, conversation_id: UUID, *, limit: int) -> list[Message]:
@@ -90,7 +101,11 @@ class MessageRepository:
                 Message.conversation_id == conversation_id,
                 Message.status == "completed",
             )
-            .order_by(Message.created_at.desc(), Message.id.desc())
+            .order_by(
+                Message.created_at.desc(),
+                Message.sequence_index.desc().nullslast(),
+                Message.id.desc(),
+            )
             .limit(limit)
         )
         return list(reversed(list(self.session.scalars(statement))))

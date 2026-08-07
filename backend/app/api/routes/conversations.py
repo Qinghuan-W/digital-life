@@ -10,7 +10,12 @@ from app.dependencies.database import get_db
 from app.dependencies.llm import CurrentLLMProvider
 from app.schemas.conversation import ConversationDetailResponse, ConversationListItemResponse
 from app.schemas.error import ErrorResponse
-from app.schemas.message import MessageResponse, MessageSendRequest, MessageSendResponse
+from app.schemas.message import (
+    MessageDeliveryPlanItemResponse,
+    MessageResponse,
+    MessageSendRequest,
+    MessageSendResponse,
+)
 from app.schemas.persona import PersonaResponse, PersonaSummaryResponse
 from app.services.chat_service import ChatService
 from app.services.conversation_service import ConversationService
@@ -102,12 +107,21 @@ def send_message(
     session: Annotated[Session, Depends(get_db)],
     provider: CurrentLLMProvider,
 ) -> MessageSendResponse:
-    user_message, assistant_message = ChatService(session, provider).send_message(
+    result = ChatService(session, provider).send_message(
         user,
         conversation_id,
         payload,
     )
     return MessageSendResponse(
-        user_message=MessageResponse.model_validate(user_message),
-        assistant_message=MessageResponse.model_validate(assistant_message),
+        user_message=MessageResponse.model_validate(result.user_message),
+        assistant_messages=[
+            MessageResponse.model_validate(message) for message in result.assistant_messages
+        ],
+        delivery_plan=[
+            MessageDeliveryPlanItemResponse(
+                message_id=item.message_id,
+                delay_ms=item.delay_ms,
+            )
+            for item in result.delivery_plan
+        ],
     )

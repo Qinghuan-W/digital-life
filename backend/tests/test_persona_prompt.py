@@ -5,13 +5,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.llm.openai_provider import OpenAIProvider
+from app.llm.openai_provider import OpenAIProvider, parse_generated_assistant_turn
 from app.llm.prompt_builder import (
     PersonaPromptProfile,
     build_current_identity_reminder,
     build_persona_system_prompt,
 )
-from app.llm.provider import LLMMessage
+from app.llm.provider import GeneratedAssistantTurn, LLMMessage, LLMProviderError
 from conftest import FakeLLMProvider
 from test_persona_chat import create_persona, headers, register_user, send_message
 
@@ -173,6 +173,140 @@ def test_prompt_contains_immersive_and_truthfulness_boundaries() -> None:
     assert "repeatedly break immersion" in prompt
 
 
+def test_prompt_defines_private_chat_mode_instead_of_generic_assistant_mode() -> None:
+    prompt = build_prompt()
+    assert "[Private Chat Mode]" in prompt
+    assert "private one-to-one instant-message conversation" in prompt
+    assert "not acting as a general-purpose assistant" in prompt
+    assert "React first as a person responding" in prompt
+    assert "short, natural instant-message responses" in prompt
+    assert "Do not end every response with a question" in prompt
+
+
+def test_prompt_avoids_default_customer_service_language_without_blocking_real_help() -> None:
+    prompt = build_prompt()
+    assert '"How can I help you?"' in prompt
+    assert '"I am always here for you"' in prompt
+    assert "should not be the default" in prompt
+    assert "does not prevent genuinely helping" in prompt
+    assert "when the user clearly asks for advice" in prompt
+
+
+def test_prompt_allows_emotion_subjective_reactions_and_concrete_fictional_daily_life() -> None:
+    prompt = build_prompt()
+    assert "preferences, affection, humor, surprise" in prompt
+    assert "concrete and plausible fictional answer" in prompt
+    assert "merely chatting, waiting, listening, or ready to help" in prompt
+    assert "Do not infer personality stereotypes from age or gender" in prompt
+
+
+def test_relationship_defaults_are_safe_and_description_has_priority() -> None:
+    prompt = build_prompt(relationship_label="伴侣", description="表达克制，不喜欢甜腻称呼")
+    assert "A partner may be naturally close" in prompt
+    assert "must not force affection into every reply" in prompt
+    assert "control, threats, exclusivity, dependency, guilt, or emotional manipulation" in prompt
+    assert "explicit Persona description has priority" in prompt
+    assert "表达克制，不喜欢甜腻称呼" in prompt
+
+
+def test_friend_and_mentor_relationships_keep_natural_chat_tendencies() -> None:
+    friend_prompt = build_prompt(relationship_label="朋友")
+    mentor_prompt = build_prompt(relationship_label="导师")
+    assert "A friend may be casual, brief, lightly teasing" in friend_prompt
+    assert "A mentor" in mentor_prompt
+    assert "may be calm and more structured when advice is explicitly requested" in mentor_prompt
+    assert "must still sound like a" in mentor_prompt
+    assert "contact during casual chat" in mentor_prompt
+
+
+def test_prompt_marks_legacy_assistant_style_as_non_authoritative_but_keeps_facts() -> None:
+    prompt = build_prompt()
+    reminder = build_current_identity_reminder(
+        PersonaPromptProfile(display_name="Yuki", relationship_label="朋友")
+    )
+    assert "Preserve their factual conversational context" in prompt
+    assert "do not imitate their" in prompt
+    assert "repeated offers of help" in prompt
+    assert "Private Chat Mode define the active" in prompt
+    assert "legacy generic-assistant wording" in reminder
+
+
+def test_prompt_requests_one_structured_turn_with_one_to_four_bubbles() -> None:
+    prompt = build_prompt()
+    assert "Make exactly one model response" in prompt
+    assert '"messages" and "conversation_signal"' in prompt
+    assert "Choose the number of message bubbles deliberately" in prompt
+    assert "Use one message" in prompt
+    assert "Prefer two or three separate bubbles" in prompt
+    assert "Do not force multiple bubbles" in prompt
+    assert "urgent, distressed, affectionate, playful, neutral, complex" in prompt
+
+
+@pytest.mark.parametrize(
+    "messages",
+    [["一条"], ["第一条", "第二条"], ["一", "二", "三", "四"]],
+)
+def test_generated_assistant_turn_accepts_one_to_four_messages(messages: list[str]) -> None:
+    turn = GeneratedAssistantTurn(messages=messages)
+    assert turn.messages == messages
+
+
+@pytest.mark.parametrize(
+    "messages",
+    [[], ["   "], ["一", "二", "三", "四", "五"], ["x" * 4001]],
+)
+def test_generated_assistant_turn_rejects_invalid_messages(messages: list[str]) -> None:
+    with pytest.raises(ValueError):
+        GeneratedAssistantTurn(messages=messages)
+
+
+def test_generated_assistant_turn_trims_each_message() -> None:
+    assert GeneratedAssistantTurn(messages=["  第一条  ", "\n第二条\t"]).messages == [
+        "第一条",
+        "第二条",
+    ]
+
+
+def test_generated_assistant_turn_removes_blank_items_but_keeps_non_blank_items() -> None:
+    assert GeneratedAssistantTurn(messages=["第一条", "   ", "第二条"]).messages == [
+        "第一条",
+        "第二条",
+    ]
+
+
+def test_provider_parser_handles_json_and_outer_code_fence() -> None:
+    assert parse_generated_assistant_turn('{"messages":["第一条","第二条"]}').messages == [
+        "第一条",
+        "第二条",
+    ]
+    fenced = '```json\n{"messages":["一条"]}\n```'
+    assert parse_generated_assistant_turn(fenced).messages == ["一条"]
+
+
+def test_provider_parser_handles_json_array_and_invalid_signal() -> None:
+    array_turn = parse_generated_assistant_turn('["第一条", "第二条"]')
+    assert array_turn.messages == ["第一条", "第二条"]
+    assert array_turn.conversation_signal == "neutral"
+    invalid_signal = parse_generated_assistant_turn(
+        '{"messages":["一条"],"conversation_signal":"unknown"}'
+    )
+    assert invalid_signal.conversation_signal == "neutral"
+
+
+def test_provider_parser_safely_falls_back_to_one_unsplit_plain_message() -> None:
+    raw = "第一句。\n第二句仍属于同一个原始回复。"
+    assert parse_generated_assistant_turn(raw).messages == [raw]
+
+
+@pytest.mark.parametrize(
+    "content",
+    ['{"messages":[]}', '{"messages":[" "]}', '{"messages":["1","2","3","4","5"]}'],
+)
+def test_provider_parser_rejects_invalid_structured_turn(content: str) -> None:
+    with pytest.raises(LLMProviderError):
+        parse_generated_assistant_turn(content)
+
+
 def test_different_personas_build_different_prompts() -> None:
     yuki = build_prompt()
     morgan = build_prompt(
@@ -206,7 +340,7 @@ def test_openai_provider_reasserts_current_prompt_after_history() -> None:
     )
     provider = OpenAIProvider(settings)
     client = Mock()
-    client.responses.create.return_value.output_text = "Apple"
+    client.responses.create.return_value.output_text = '{"messages":["Apple"]}'
     provider._client = client
     system_prompt = build_prompt(display_name="Apple")
     identity_reminder = build_current_identity_reminder(
@@ -217,11 +351,12 @@ def test_openai_provider_reasserts_current_prompt_after_history() -> None:
         LLMMessage(role="user", content="你叫什么名字？"),
     ]
 
-    assert provider.generate_reply(
+    turn = provider.generate_reply(
         system_prompt=system_prompt,
         identity_reminder=identity_reminder,
         messages=messages,
-    ) == "Apple"
+    )
+    assert turn.messages == ["Apple"]
     request = client.responses.create.call_args.kwargs
     assert request["instructions"] == system_prompt
     assert request["input"][:-1] == [

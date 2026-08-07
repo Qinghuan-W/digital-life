@@ -42,14 +42,22 @@ class ConversationRepository:
         latest_content = (
             select(Message.content)
             .where(Message.conversation_id == Conversation.id)
-            .order_by(Message.created_at.desc(), Message.id.desc())
+            .order_by(
+                Message.created_at.desc(),
+                Message.sequence_index.desc().nullslast(),
+                Message.id.desc(),
+            )
             .limit(1)
             .scalar_subquery()
         )
         latest_role = (
             select(Message.role)
             .where(Message.conversation_id == Conversation.id)
-            .order_by(Message.created_at.desc(), Message.id.desc())
+            .order_by(
+                Message.created_at.desc(),
+                Message.sequence_index.desc().nullslast(),
+                Message.id.desc(),
+            )
             .limit(1)
             .scalar_subquery()
         )

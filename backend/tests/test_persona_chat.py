@@ -3,12 +3,14 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.persona import Persona
 from app.models.user import User
+from app.repositories.message_repository import MessageRepository
 from app.services.persona_service import PersonaService
 from app.schemas.persona import PersonaCreateRequest
 from conftest import FakeLLMProvider
@@ -271,7 +273,14 @@ def test_send_message_returns_and_persists_both_messages(
     assert response.status_code == 200
     body = response.json()
     assert body["user_message"]["content"] == "今天怎么样？"
-    assert body["assistant_message"]["content"] == fake_llm.reply
+    assert [message["content"] for message in body["assistant_messages"]] == [fake_llm.reply]
+    assert [item["message_id"] for item in body["delivery_plan"]] == [
+        body["assistant_messages"][0]["id"]
+    ]
+    assert body["user_message"]["reply_to_message_id"] is None
+    assert body["user_message"]["sequence_index"] is None
+    assert body["assistant_messages"][0]["reply_to_message_id"] == body["user_message"]["id"]
+    assert body["assistant_messages"][0]["sequence_index"] == 0
     stored = list(
         db_session.scalars(
             select(Message)
@@ -280,6 +289,204 @@ def test_send_message_returns_and_persists_both_messages(
         )
     )
     assert [message.role for message in stored] == ["user", "assistant"]
+
+
+@pytest.mark.parametrize(
+    "replies",
+    [["一条回复"], ["第一条", "第二条"], ["一", "二", "三", "四"]],
+)
+def test_provider_turn_persists_one_to_four_ordered_assistant_messages(
+    client: TestClient,
+    db_session: Session,
+    fake_llm: FakeLLMProvider,
+    replies: list[str],
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = replies
+    response = send_message(client, auth, conversation_id, content="说点什么")
+    assert response.status_code == 200
+    body = response.json()
+    assistant_messages = body["assistant_messages"]
+    assert [message["content"] for message in assistant_messages] == replies
+    assert [message["sequence_index"] for message in assistant_messages] == list(
+        range(len(replies))
+    )
+    assert all(
+        message["reply_to_message_id"] == body["user_message"]["id"]
+        for message in assistant_messages
+    )
+    assert len(fake_llm.calls) == 1
+    assert [item["message_id"] for item in body["delivery_plan"]] == [
+        message["id"] for message in assistant_messages
+    ]
+
+    stored = list(
+        db_session.scalars(
+            select(Message)
+            .where(Message.role == "assistant")
+            .order_by(Message.sequence_index)
+        )
+    )
+    assert [message.content for message in stored] == replies
+
+
+def test_multi_message_retry_returns_existing_complete_turn_without_provider_call(
+    client: TestClient,
+    db_session: Session,
+    fake_llm: FakeLLMProvider,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    client_message_id = str(uuid4())
+    fake_llm.replies = ["第一条", "第二条", "第三条"]
+    first = send_message(
+        client,
+        auth,
+        conversation_id,
+        client_message_id=client_message_id,
+    )
+    second = send_message(
+        client,
+        auth,
+        conversation_id,
+        client_message_id=client_message_id,
+    )
+    assert first.status_code == second.status_code == 200
+    assert first.json()["user_message"]["id"] == second.json()["user_message"]["id"]
+    assert [message["id"] for message in first.json()["assistant_messages"]] == [
+        message["id"] for message in second.json()["assistant_messages"]
+    ]
+    assert second.json()["delivery_plan"] == []
+    assert len(fake_llm.calls) == 1
+    assert db_session.scalar(select(func.count()).select_from(Message)) == 4
+
+
+def test_conversation_preview_uses_last_assistant_bubble(
+    client: TestClient,
+    fake_llm: FakeLLMProvider,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = ["前一个气泡", "最后一个气泡"]
+    assert send_message(client, auth, conversation_id).status_code == 200
+    item = client.get("/api/v1/conversations", headers=headers(auth)).json()[0]
+    assert item["last_message_preview"] == "最后一个气泡"
+    assert item["last_message_role"] == "assistant"
+
+
+def test_delivery_plan_and_conversation_signal_are_not_in_message_history(
+    client: TestClient,
+    fake_llm: FakeLLMProvider,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = ["第一条", "第二条"]
+    fake_llm.conversation_signal = "playful"
+    sent = send_message(client, auth, conversation_id)
+    assert sent.status_code == 200
+    assert len(sent.json()["delivery_plan"]) == 2
+    history = client.get(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        headers=headers(auth),
+    ).json()
+    assert all("delivery_plan" not in message for message in history)
+    assert all("conversation_signal" not in message for message in history)
+
+
+def test_multi_message_history_is_ordered_and_exposes_reply_metadata(
+    client: TestClient,
+    fake_llm: FakeLLMProvider,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = ["先说这个", "再补一句", "最后一句"]
+    response = send_message(client, auth, conversation_id, content="开始")
+    assert response.status_code == 200
+    history = client.get(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        headers=headers(auth),
+    ).json()
+    assert [message["content"] for message in history] == [
+        "开始",
+        "先说这个",
+        "再补一句",
+        "最后一句",
+    ]
+    assert [message["sequence_index"] for message in history] == [None, 0, 1, 2]
+
+
+def test_reply_sequence_unique_constraint_prevents_duplicate_bubble(
+    client: TestClient,
+    db_session: Session,
+    fake_llm: FakeLLMProvider,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = ["唯一气泡"]
+    body = send_message(client, auth, conversation_id).json()
+    duplicate = Message(
+        conversation_id=UUID(conversation_id),
+        role="assistant",
+        content="重复气泡",
+        status="completed",
+        reply_to_message_id=UUID(body["user_message"]["id"]),
+        sequence_index=0,
+    )
+    db_session.add(duplicate)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_database_failure_rolls_back_entire_assistant_turn(
+    client: TestClient,
+    db_session: Session,
+    fake_llm: FakeLLMProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    fake_llm.replies = ["第一条", "第二条"]
+
+    def fail_after_partial_add(
+        repository: MessageRepository,
+        *,
+        conversation_id: UUID,
+        contents: list[str],
+        reply_to_message_id: UUID,
+    ) -> list[Message]:
+        partial = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=contents[0],
+            status="completed",
+            reply_to_message_id=reply_to_message_id,
+            sequence_index=0,
+        )
+        repository.session.add(partial)
+        repository.session.flush()
+        raise RuntimeError("forced atomic save failure")
+
+    monkeypatch.setattr(MessageRepository, "create_assistants", fail_after_partial_add)
+    response = send_message(client, auth, conversation_id)
+    assert response.status_code == 500
+    db_session.expire_all()
+    stored = list(db_session.scalars(select(Message)))
+    assert len(stored) == 1
+    assert stored[0].role == "user"
+
+
+def test_prompt_and_developer_reminder_are_not_persisted(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    auth = register_user(client)
+    conversation_id = create_persona(client, auth)["conversation"]["id"]
+    assert send_message(client, auth, conversation_id, content="普通内容").status_code == 200
+    contents = list(db_session.scalars(select(Message.content)))
+    assert all("[Private Chat Mode]" not in content for content in contents)
+    assert all("[Current Identity" not in content for content in contents)
 
 
 @pytest.mark.parametrize("content", ["   ", "x" * 4001])

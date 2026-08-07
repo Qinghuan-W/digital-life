@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Literal, cast
 from uuid import UUID
 
@@ -18,6 +19,14 @@ from app.models.user import User
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.message_repository import MessageRepository
 from app.schemas.message import MessageSendRequest
+from app.services.message_delivery import DeliveryPlanItem, build_delivery_plan
+
+
+@dataclass(frozen=True)
+class ChatSendResult:
+    user_message: Message
+    assistant_messages: list[Message]
+    delivery_plan: list[DeliveryPlanItem]
 
 
 class ChatService:
@@ -33,7 +42,7 @@ class ChatService:
         user: User,
         conversation_id: UUID,
         request: MessageSendRequest,
-    ) -> tuple[Message, Message]:
+    ) -> ChatSendResult:
         conversation = self.conversations.get_owned(conversation_id, user.id)
         if conversation is None:
             raise AppError("conversation_not_found", "对话不存在", status.HTTP_404_NOT_FOUND)
@@ -60,9 +69,9 @@ class ChatService:
                 if user_message is None:
                     raise
 
-        existing_reply = self.messages.get_assistant_reply(user_message.id)
-        if existing_reply is not None:
-            return user_message, existing_reply
+        existing_replies = self.messages.get_assistant_replies(user_message.id)
+        if existing_replies:
+            return ChatSendResult(user_message, existing_replies, [])
 
         history = self.messages.recent_for_context(
             conversation_id,
@@ -90,7 +99,7 @@ class ChatService:
         user_message_id = user_message.id
         self.session.rollback()
         try:
-            reply_content = self.provider.generate_reply(
+            generated_turn = self.provider.generate_reply(
                 system_prompt=system_prompt,
                 identity_reminder=identity_reminder,
                 messages=provider_messages,
@@ -109,23 +118,30 @@ class ChatService:
             self.session.rollback()
             raise AppError("conversation_not_found", "对话不存在", status.HTTP_404_NOT_FOUND)
 
-        existing_reply = self.messages.get_assistant_reply(user_message.id)
-        if existing_reply is not None:
-            return user_message, existing_reply
+        existing_replies = self.messages.get_assistant_replies(user_message.id)
+        if existing_replies:
+            return ChatSendResult(user_message, existing_replies, [])
 
         try:
-            assistant_message = self.messages.create_assistant(
+            assistant_messages = self.messages.create_assistants(
                 conversation_id=conversation.id,
-                content=reply_content,
+                contents=generated_turn.messages,
                 reply_to_message_id=user_message.id,
             )
-            self.conversations.touch(conversation, assistant_message.created_at)
+            delivery_plan = build_delivery_plan(
+                assistant_messages,
+                generated_turn.conversation_signal,
+            )
+            self.conversations.touch(conversation, assistant_messages[-1].created_at)
             self.session.commit()
-            return user_message, assistant_message
+            return ChatSendResult(user_message, assistant_messages, delivery_plan)
         except IntegrityError:
             self.session.rollback()
             user_message = self.messages.get_by_id(user_message_id)
-            existing_reply = self.messages.get_assistant_reply(user_message_id)
-            if user_message is not None and existing_reply is not None:
-                return user_message, existing_reply
+            existing_replies = self.messages.get_assistant_replies(user_message_id)
+            if user_message is not None and existing_replies:
+                return ChatSendResult(user_message, existing_replies, [])
+            raise
+        except Exception:
+            self.session.rollback()
             raise
