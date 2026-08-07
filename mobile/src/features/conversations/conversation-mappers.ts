@@ -40,14 +40,23 @@ export function mapApiMessage(dto: ApiMessage): Message {
     content: dto.content,
     status: dto.status,
     clientMessageId: dto.client_message_id,
+    replyToMessageId: dto.reply_to_message_id,
+    sequenceIndex: dto.sequence_index,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
 }
 
 export function mapMessageSendResponse(dto: ApiMessageSendResponse): MessageSendResult {
+  const assistantMessages = dto.assistant_messages
+    .map(mapApiMessage)
+    .sort((left, right) => (left.sequenceIndex ?? 0) - (right.sequenceIndex ?? 0));
   return {
     userMessage: mapApiMessage(dto.user_message),
-    assistantMessage: mapApiMessage(dto.assistant_message),
+    assistantMessages,
+    deliveryPlan: dto.delivery_plan.map((item) => ({
+      messageId: item.message_id,
+      delayMs: item.delay_ms,
+    })),
   };
 }

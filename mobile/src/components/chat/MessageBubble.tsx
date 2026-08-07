@@ -17,7 +17,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
         {message.deliveryState ? (
           <View style={styles.statusRow}>
             <Text style={[styles.status, isUser && styles.userStatus]}>
-              {message.deliveryState === 'sending' ? '正在等待 AI 回复…' : '发送失败'}
+              {message.deliveryState === 'sending' ? '正在等待回复…' : '发送失败'}
             </Text>
             {message.deliveryState === 'failed' && onRetry ? (
               <Pressable

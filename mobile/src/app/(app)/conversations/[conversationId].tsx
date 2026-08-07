@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
@@ -15,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { MessageComposer } from '@/components/chat/MessageComposer';
+import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import { EditPersonaSheet } from '@/components/persona/EditPersonaSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { FormError } from '@/components/ui/FormError';
@@ -28,6 +30,11 @@ import { getUserFacingError } from '@/services/api-errors';
 import { ConversationDetail } from '@/types/conversation';
 import { Message } from '@/types/message';
 
+type PendingBubbleTimer = {
+  id: ReturnType<typeof setTimeout>;
+  resolve: (completed: boolean) => void;
+};
+
 export default function ConversationScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ conversationId?: string | string[] }>();
@@ -36,11 +43,18 @@ export default function ConversationScreen() {
     : params.conversationId;
   const listRef = useRef<FlatList<Message>>(null);
   const sendingLock = useRef(false);
+  const activeSendOperation = useRef(0);
+  const mounted = useRef(true);
+  const activeConversationId = useRef(conversationId);
+  const revealCycle = useRef(0);
+  const bubbleTimers = useRef<PendingBubbleTimer[]>([]);
   const [conversation, setConversation] = useState<ConversationDetail>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [composerValue, setComposerValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
   const [editingPersona, setEditingPersona] = useState(false);
@@ -51,6 +65,7 @@ export default function ConversationScreen() {
       setLoading(false);
       return;
     }
+    const requestedConversationId = conversationId;
     setLoading(true);
     setLoadError(undefined);
     try {
@@ -58,6 +73,9 @@ export default function ConversationScreen() {
         getConversation(conversationId),
         getMessages(conversationId),
       ]);
+      if (!mounted.current || activeConversationId.current !== requestedConversationId) {
+        return;
+      }
       if (history.length > 0) {
         const last = history[history.length - 1];
         if (last.role === 'user' && last.clientMessageId) {
@@ -67,9 +85,13 @@ export default function ConversationScreen() {
       setConversation(detail);
       setMessages(history);
     } catch (error) {
-      setLoadError(getUserFacingError(error));
+      if (mounted.current && activeConversationId.current === requestedConversationId) {
+        setLoadError(getUserFacingError(error));
+      }
     } finally {
-      setLoading(false);
+      if (mounted.current && activeConversationId.current === requestedConversationId) {
+        setLoading(false);
+      }
     }
   }, [conversationId]);
 
@@ -79,6 +101,127 @@ export default function ConversationScreen() {
     }, 0);
     return () => clearTimeout(timeoutId);
   }, [loadConversation]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted.current) {
+        setReduceMotion(enabled);
+      }
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReduceMotion,
+    );
+    return () => {
+      mounted.current = false;
+      subscription.remove();
+      revealCycle.current += 1;
+      for (const timer of bubbleTimers.current) {
+        clearTimeout(timer.id);
+        timer.resolve(false);
+      }
+      bubbleTimers.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    activeConversationId.current = conversationId;
+    revealCycle.current += 1;
+    activeSendOperation.current += 1;
+    sendingLock.current = false;
+    for (const timer of bubbleTimers.current) {
+      clearTimeout(timer.id);
+      timer.resolve(false);
+    }
+    bubbleTimers.current = [];
+    const resetTypingTimer = setTimeout(() => {
+      if (mounted.current && activeConversationId.current === conversationId) {
+        setTyping(false);
+      }
+    }, 0);
+    return () => clearTimeout(resetTypingTimer);
+  }, [conversationId]);
+
+  const waitForBubbleDelay = useCallback((delayMs: number) => {
+    if (delayMs <= 0) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      const timer: PendingBubbleTimer = {
+        id: setTimeout(() => {
+          bubbleTimers.current = bubbleTimers.current.filter((item) => item !== timer);
+          resolve(true);
+        }, delayMs),
+        resolve,
+      };
+      bubbleTimers.current.push(timer);
+    });
+  }, []);
+
+  const revealAssistantMessages = useCallback(
+    async (
+      result: Awaited<ReturnType<typeof sendMessage>>,
+      clientMessageId: string,
+      requestedConversationId: string,
+    ) => {
+      if (result.assistantMessages.length === 0) {
+        throw new Error('回复内容为空');
+      }
+      const cycle = ++revealCycle.current;
+      if (
+        !mounted.current ||
+        activeConversationId.current !== requestedConversationId
+      ) {
+        return;
+      }
+      const assistantIds = new Set(result.assistantMessages.map((message) => message.id));
+      setMessages((current) => [
+        ...current.filter(
+          (item) =>
+            item.clientMessageId !== clientMessageId && !assistantIds.has(item.id),
+        ),
+        result.userMessage,
+      ]);
+      const delayByMessageId = new Map(
+        result.deliveryPlan.map((item) => [item.messageId, item.delayMs]),
+      );
+
+      for (const assistantMessage of result.assistantMessages) {
+        if (
+          !mounted.current ||
+          revealCycle.current !== cycle ||
+          activeConversationId.current !== requestedConversationId
+        ) {
+          return;
+        }
+        const plannedDelay = delayByMessageId.get(assistantMessage.id) ?? 0;
+        const delayMs = reduceMotion ? Math.min(150, plannedDelay) : plannedDelay;
+        setTyping(delayMs > 0);
+        const completed = await waitForBubbleDelay(delayMs);
+        if (!completed) {
+          return;
+        }
+        if (
+          !mounted.current ||
+          revealCycle.current !== cycle ||
+          activeConversationId.current !== requestedConversationId
+        ) {
+          return;
+        }
+        setTyping(false);
+        setMessages((current) =>
+          current.some((item) => item.id === assistantMessage.id)
+            ? current
+            : [...current, assistantMessage],
+        );
+      }
+      if (mounted.current && revealCycle.current === cycle) {
+        setTyping(false);
+      }
+    },
+    [reduceMotion, waitForBubbleDelay],
+  );
 
   const leaveConversation = () => {
     if (router.canGoBack()) {
@@ -92,8 +235,11 @@ export default function ConversationScreen() {
     if (!conversationId || sendingLock.current) {
       return;
     }
+    const requestedConversationId = conversationId;
+    const operation = ++activeSendOperation.current;
     sendingLock.current = true;
     setSending(true);
+    setTyping(true);
     setSendError(undefined);
     const now = new Date().toISOString();
     setMessages((current) => {
@@ -114,6 +260,8 @@ export default function ConversationScreen() {
           content,
           status: 'completed',
           clientMessageId,
+          replyToMessageId: null,
+          sequenceIndex: null,
           createdAt: now,
           updatedAt: now,
           deliveryState: 'sending',
@@ -122,24 +270,35 @@ export default function ConversationScreen() {
     });
 
     try {
-      const result = await sendMessage(conversationId, content, clientMessageId);
-      setMessages((current) => [
-        ...current.filter((item) => item.clientMessageId !== clientMessageId),
-        result.userMessage,
-        result.assistantMessage,
-      ]);
+      const result = await sendMessage(requestedConversationId, content, clientMessageId);
+      await revealAssistantMessages(result, clientMessageId, requestedConversationId);
     } catch (error) {
-      setSendError(getUserFacingError(error));
-      setMessages((current) =>
-        current.map((item) =>
-          item.clientMessageId === clientMessageId
-            ? { ...item, deliveryState: 'failed' }
-            : item,
-        ),
-      );
+      if (
+        mounted.current &&
+        activeSendOperation.current === operation &&
+        activeConversationId.current === requestedConversationId
+      ) {
+        setTyping(false);
+        setSendError(getUserFacingError(error));
+        setMessages((current) =>
+          current.map((item) =>
+            item.clientMessageId === clientMessageId
+              ? { ...item, deliveryState: 'failed' }
+              : item,
+          ),
+        );
+      }
     } finally {
-      sendingLock.current = false;
-      setSending(false);
+      if (activeSendOperation.current === operation) {
+        sendingLock.current = false;
+      }
+      if (
+        mounted.current &&
+        activeSendOperation.current === operation &&
+        activeConversationId.current === requestedConversationId
+      ) {
+        setSending(false);
+      }
     }
   };
 
@@ -222,6 +381,7 @@ export default function ConversationScreen() {
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={<ChatEmptyState personaName={conversation.persona.displayName} />}
+            ListFooterComponent={typing ? <TypingIndicator /> : null}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ref={listRef}
             renderItem={({ item }) => <MessageBubble message={item} onRetry={retryMessage} />}

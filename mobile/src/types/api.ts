@@ -93,11 +93,19 @@ export type ApiMessage = {
   content: string;
   status: 'completed' | 'failed';
   client_message_id: string | null;
+  reply_to_message_id: string | null;
+  sequence_index: number | null;
   created_at: string;
   updated_at: string;
 };
 
 export type ApiMessageSendResponse = {
   user_message: ApiMessage;
-  assistant_message: ApiMessage;
+  assistant_messages: ApiMessage[];
+  delivery_plan: ApiMessageDeliveryPlanItem[];
+};
+
+export type ApiMessageDeliveryPlanItem = {
+  message_id: string;
+  delay_ms: number;
 };

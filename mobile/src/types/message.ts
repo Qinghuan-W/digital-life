@@ -9,6 +9,8 @@ export type Message = {
   content: string;
   status: MessageStatus;
   clientMessageId: string | null;
+  replyToMessageId: string | null;
+  sequenceIndex: number | null;
   createdAt: string;
   updatedAt: string;
   deliveryState?: MessageDeliveryState;
@@ -16,5 +18,11 @@ export type Message = {
 
 export type MessageSendResult = {
   userMessage: Message;
-  assistantMessage: Message;
+  assistantMessages: Message[];
+  deliveryPlan: MessageDeliveryPlanItem[];
+};
+
+export type MessageDeliveryPlanItem = {
+  messageId: string;
+  delayMs: number;
 };
