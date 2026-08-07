@@ -7,8 +7,9 @@ DigitalLife 是规划中的跨平台 AI 陪伴与生活 Agent。当前已完成�
 - **Phase 1B-2**：Expo SecureStore、真实 API Client、自动 Refresh 和 Android 端到端认证。
 - **Phase 2**：Persona 创建、默认对话、首页对话列表、消息持久化和基础非流式 AI 聊天。
 - **Phase 3A**：根据最新 Persona 资料动态构建沉浸式 Prompt，并支持轻量资料编辑。
+- **Phase 3A.2**：默认真人私聊模式，以及一次模型调用生成并持久化 1～4 个独立消息气泡。
 
-Persona 的姓名、关系、年龄、性别和描述现在会影响下一条 AI 回复。数据库中的当前 Persona Profile 高于历史消息中的冲突身份资料；历史消息不会因改名而被重写。`display_name` 是必须原样使用的精确名称，不允许模型翻译、本地化或改变格式。Prompt 不保存到数据库；长期记忆、聊天记录上传、世界状态、流式输出和 Agent 工具尚未开发。
+Persona 的姓名、关系、年龄、性别和描述现在会影响下一条 AI 回复。默认“真人私聊模式”是指模拟私人即时通讯中的一对一联系人语气，不是隐私联系人功能，也不代表现实真人。数据库中的当前 Persona Profile 高于历史消息中的冲突身份资料；历史消息不会因改名而被重写。`display_name` 是必须原样使用的精确名称，不允许模型翻译、本地化或改变格式。Prompt 不保存到数据库；聊天记录上传、说话风格提取、共同记忆、长期记忆、世界状态、流式输出和 Agent 工具尚未开发。
 
 ## 当前架构
 
@@ -18,8 +19,11 @@ React Native UI
   -> API Client / Expo SecureStore
   -> http://10.0.2.2:8000/api/v1
   -> FastAPI Routes / Services / Repositories
-  -> Dynamic Prompt Builder (base rules + latest Persona profile + recent messages)
-  -> LLM Provider (OpenAI Responses API)
+  -> Dynamic Prompt Builder (Private Chat Mode + latest Persona profile + recent messages)
+  -> OpenAI-compatible LLM Provider (explicit Responses or Chat Completions mode)
+  -> GeneratedAssistantTurn (1-4 messages + ephemeral conversation signal)
+  -> Atomic assistant-turn persistence
+  -> Ephemeral delivery plan (mobile-only display rhythm)
   -> SQLAlchemy
   -> Windows PostgreSQL 17
 ```
@@ -49,7 +53,7 @@ npx expo start --offline --android
 
 ## 配置与验证
 
-- `backend/.env` 保存本机数据库凭据、JWT secret 及本地 LLM 配置。`OPENAI_API_KEY` 和 `OPENAI_MODEL` 必须由开发者手动填写。
+- `backend/.env` 保存本机数据库凭据、JWT secret 及本地 LLM 配置。`OPENAI_API_KEY` 和 `OPENAI_MODEL` 必须由开发者手动填写；`LLM_API_MODE` 明确选择 `responses` 或 `chat_completions`，不会按模型名称猜测端点。
 - `mobile/.env` 只包含公开 API 地址 `EXPO_PUBLIC_API_URL`。
 - 两个真实 `.env` 均被 Git 忽略；仓库只保留 `.env.example`。
 
@@ -68,8 +72,11 @@ Set-Location 'C:\Users\wzc\Desktop\DigitalLife-App\backend'
 ## 当前限制
 
 - Persona 可生成沉浸式虚构日常，但不代表现实真人的当前状态。
+- `relationship_label` 只提供默认社交距离；明确的 Persona 描述优先，年龄和性别不用于制造刻板性格。
+- 一轮回复最多四个气泡；当前仍是非流式响应，后续气泡只在移动端做短暂展示延迟。
+- 模型别名可用不代表第三方同时支持 Responses 和 Chat Completions；具体端点和 JSON/Structured Output 能力必须按供应商实际能力配置。
 - 未确认的重大共同历史不能作为真实记忆生成。
-- 暂无聊天记录上传、共同记忆、长期记忆或世界状态持久化。
+- 暂无聊天记录上传、聊天风格提取、共同记忆、长期记忆或世界状态持久化。
 - 暂无流式输出和头像上传。
 - 暂无可执行现实操作的 Agent 工具。
 - 当前仍运行在 Windows 本地开发环境。
